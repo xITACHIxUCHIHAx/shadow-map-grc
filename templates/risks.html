@@ -1,0 +1,483 @@
+{% extends "base.html" %}
+
+{% block title %}Risk Register | Shadow Map GRC{% endblock %}
+
+{% block header %}
+<h1>Risk Register</h1>
+<p class="subtitle">Record, assess, treat, and track business information-security risks.</p>
+{% endblock %}
+
+{% block content %}
+<style>
+    .risk-stats {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+        margin-bottom: 22px;
+    }
+    .risk-stat {
+        background: white;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 17px;
+    }
+    .risk-stat .number { font-size: 26px; font-weight: 750; margin-top: 8px; }
+    .risk-stat .caption { color: var(--muted); font-size: 12px; }
+    .risk-form-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0 18px;
+    }
+    .risk-form-grid .full { grid-column: 1 / -1; }
+    .risk-form-grid input[type="text"],
+    .risk-form-grid input[type="date"],
+    .risk-form-grid input[type="number"],
+    .risk-form-grid select,
+    .risk-form-grid textarea {
+        width: 100%;
+        padding: 11px 12px;
+        border: 1px solid #dbe1eb;
+        border-radius: 8px;
+        background: white;
+        color: var(--text);
+        font: inherit;
+    }
+    .risk-form-grid textarea { min-height: 82px; resize: vertical; }
+    .risk-form-grid input:focus,
+    .risk-form-grid select:focus,
+    .risk-form-grid textarea:focus {
+        outline: 2px solid #d8e2ff;
+        border-color: var(--accent);
+    }
+    .field-note { margin-top: 5px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+    .score-box {
+        padding: 14px;
+        margin-top: 12px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: #f9fafc;
+    }
+    .control-list {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+        margin-top: 12px;
+    }
+    .control-option {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 10px;
+        line-height: 1.5;
+        font-size: 12px;
+    }
+    .control-option input { margin-top: 3px; }
+    .risk-pill {
+        display: inline-block;
+        padding: 5px 8px;
+        border-radius: 18px;
+        font-size: 11px;
+        font-weight: 750;
+        white-space: nowrap;
+    }
+    .level-Low { color: #21683a; background: #eaf8ef; }
+    .level-Medium { color: #805b12; background: #fff4d8; }
+    .level-High { color: #a54d12; background: #ffeadc; }
+    .level-Critical { color: #a52d35; background: #ffe5e7; }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .link-button {
+        display: inline-block;
+        padding: 7px 10px;
+        border: 1px solid var(--border);
+        border-radius: 7px;
+        color: var(--accent);
+        text-decoration: none;
+        font-size: 12px;
+        font-weight: 650;
+        background: white;
+        cursor: pointer;
+    }
+    .delete-button { color: #a52d35; }
+    .risk-description { min-width: 180px; max-width: 340px; line-height: 1.5; }
+    .risk-filter-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 14px;
+    }
+    .risk-filter-grid label {
+        display: flex; flex-direction: column; gap: 7px;
+        font-size: 13px; font-weight: 650;
+    }
+    .risk-filter-grid select {
+        width: 100%; min-width: 0; padding: 10px 12px;
+        border: 1px solid var(--border); border-radius: 8px;
+        background: white; color: var(--text); font: inherit;
+    }
+    .risk-filter-actions {
+        display: flex; flex-wrap: wrap; gap: 10px;
+        align-items: center; margin-top: 16px;
+    }
+
+    .due-warning {
+        display: inline-block;
+        margin-top: 5px;
+        padding: 4px 7px;
+        border-radius: 6px;
+        color: #805b12;
+        background: #fff4d8;
+        font-size: 11px;
+        font-weight: 700;
+    }
+    .due-overdue {
+        display: inline-block;
+        margin-top: 5px;
+        padding: 4px 7px;
+        border-radius: 6px;
+        color: #a52d35;
+        background: #ffe5e7;
+        font-size: 11px;
+        font-weight: 700;
+    }
+    @media (max-width: 850px) {
+        .risk-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 520px) {
+        .risk-form-grid, .control-list, .risk-filter-grid { grid-template-columns: 1fr; }
+        .risk-form-grid .full { grid-column: auto; }
+    }
+</style>
+
+<div class="risk-stats">
+    <div class="risk-stat">
+        <div class="caption">TOTAL RISKS</div>
+        <div class="number">{{ stats.total }}</div>
+    </div>
+    <div class="risk-stat">
+        <div class="caption">OPEN</div>
+        <div class="number">{{ stats.open }}</div>
+    </div>
+    <div class="risk-stat">
+        <div class="caption">HIGH / CRITICAL · NOT REMEDIATED</div>
+        <div class="number">{{ stats.high_critical }}</div>
+    </div>
+    <div class="risk-stat">
+        <div class="caption">REMEDIATED</div>
+        <div class="number">{{ stats.remediated }}</div>
+    </div>
+</div>
+
+<div class="panel">
+    <div class="panel-heading">
+        <div>
+            <h2>{% if edit_risk %}Edit risk #{{ edit_risk.id }}{% else %}Add a risk{% endif %}</h2>
+            <p class="subtitle">Scores are user assessments, not automatic proof of vulnerability.</p>
+        </div>
+        {% if edit_risk %}
+            <a class="link-button" href="{{ url_for('risk_register_page') }}">Cancel edit</a>
+        {% endif %}
+    </div>
+
+    <form method="post" action="{{ url_for('save_risk') }}">
+        <input type="hidden" name="risk_id" value="{{ edit_risk.id if edit_risk else '' }}">
+
+        <div class="risk-form-grid">
+            <div class="full">
+                <label class="form-label" for="title">Risk title *</label>
+                <input id="title" name="title" type="text" maxlength="160" required
+                       value="{{ edit_risk.title if edit_risk else '' }}"
+                       placeholder="Example: Unpatched internet-facing server">
+            </div>
+
+            <div>
+                <label class="form-label" for="asset">Asset / system</label>
+                <input id="asset" name="asset" type="text" maxlength="250"
+                       value="{{ edit_risk.asset if edit_risk else '' }}"
+                       placeholder="Server, application, process, or data">
+            </div>
+            <div>
+                <label class="form-label" for="category">Risk category</label>
+                {% set current_category = edit_risk.category if edit_risk else 'Technical Security' %}
+                <select id="category" name="category">
+                    {% for option in ['Technical Security', 'Access Control', 'Data Protection', 'Business Continuity', 'Third Party', 'Compliance', 'Physical Security', 'General'] %}
+                    <option value="{{ option }}" {% if current_category == option %}selected{% endif %}>{{ option }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="full">
+                <label class="form-label" for="description">Risk description</label>
+                <textarea id="description" name="description" maxlength="4000"
+                          placeholder="Describe the risk scenario, threat, and weakness.">{{ edit_risk.description if edit_risk else '' }}</textarea>
+            </div>
+
+            <div class="full">
+                <label class="form-label" for="business_impact">Business impact</label>
+                <textarea id="business_impact" name="business_impact" maxlength="4000"
+                          placeholder="Potential effect on operations, costs, customers, data, or reputation.">{{ edit_risk.business_impact if edit_risk else '' }}</textarea>
+            </div>
+
+            <div class="full">
+                <label class="form-label" for="evidence">Evidence / reference</label>
+                <textarea id="evidence" name="evidence" maxlength="4000"
+                          placeholder="Record scan ID, log reference, observation, or document location. Avoid passwords and secrets.">{{ edit_risk.evidence if edit_risk else '' }}</textarea>
+            </div>
+
+            <div>
+                <label class="form-label" for="inherent_likelihood">Inherent likelihood (1–5) *</label>
+                {% set il = edit_risk.inherent_likelihood if edit_risk else 3 %}
+                <select id="inherent_likelihood" name="inherent_likelihood" required>
+                    {% for n in range(1, 6) %}<option value="{{ n }}" {% if il == n %}selected{% endif %}>{{ n }}{% if n == 1 %} — Rare{% elif n == 2 %} — Unlikely{% elif n == 3 %} — Possible{% elif n == 4 %} — Likely{% else %} — Almost certain{% endif %}</option>{% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="form-label" for="inherent_impact">Inherent impact (1–5) *</label>
+                {% set ii = edit_risk.inherent_impact if edit_risk else 3 %}
+                <select id="inherent_impact" name="inherent_impact" required>
+                    {% for n in range(1, 6) %}<option value="{{ n }}" {% if ii == n %}selected{% endif %}>{{ n }}{% if n == 1 %} — Negligible{% elif n == 2 %} — Minor{% elif n == 3 %} — Moderate{% elif n == 4 %} — Major{% else %} — Severe{% endif %}</option>{% endfor %}
+                </select>
+            </div>
+
+            <div class="full score-box">
+                <strong>Inherent score = likelihood × impact</strong>
+                <div class="field-note">The score and level are calculated by the server when you save.</div>
+            </div>
+
+            <div>
+                <label class="form-label" for="residual_likelihood">Residual likelihood (1–5) *</label>
+                {% set rl = edit_risk.residual_likelihood if edit_risk else 2 %}
+                <select id="residual_likelihood" name="residual_likelihood" required>
+                    {% for n in range(1, 6) %}<option value="{{ n }}" {% if rl == n %}selected{% endif %}>{{ n }}{% if n == 1 %} — Rare{% elif n == 2 %} — Unlikely{% elif n == 3 %} — Possible{% elif n == 4 %} — Likely{% else %} — Almost certain{% endif %}</option>{% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="form-label" for="residual_impact">Residual impact (1–5) *</label>
+                {% set ri = edit_risk.residual_impact if edit_risk else 3 %}
+                <select id="residual_impact" name="residual_impact" required>
+                    {% for n in range(1, 6) %}<option value="{{ n }}" {% if ri == n %}selected{% endif %}>{{ n }}{% if n == 1 %} — Negligible{% elif n == 2 %} — Minor{% elif n == 3 %} — Moderate{% elif n == 4 %} — Major{% else %} — Severe{% endif %}</option>{% endfor %}
+                </select>
+            </div>
+
+            <div class="full score-box">
+                <strong>Residual score = residual likelihood × residual impact</strong>
+                <div class="field-note">
+                    Assess residual risk after considering controls that are implemented and supported by evidence.
+                    A planned treatment does not reduce the residual score by itself.
+                    Record the evidence or reference above, and update the score only when the reassessment is justified.
+                    A “Remediated” status should reflect verified completion, not merely a planned action.
+                </div>
+            </div>
+
+            <div class="full">
+                <label class="form-label" for="treatment">Treatment / mitigation plan</label>
+                <textarea id="treatment" name="treatment" maxlength="4000"
+                          placeholder="Describe the action, control, or reason for accepting the risk.">{{ edit_risk.treatment if edit_risk else '' }}</textarea>
+            </div>
+
+            <div>
+                <label class="form-label" for="owner">Risk owner</label>
+                <input id="owner" name="owner" type="text" maxlength="160"
+                       value="{{ edit_risk.owner if edit_risk else '' }}"
+                       placeholder="Role or responsible person">
+            </div>
+            <div>
+                <label class="form-label" for="due_date">Target due date</label>
+                <input id="due_date" name="due_date" type="date"
+                       value="{{ edit_risk.due_date if edit_risk else '' }}">
+            </div>
+
+            <div>
+                <label class="form-label" for="status">Treatment status</label>
+                {% set current_status = edit_risk.status if edit_risk else 'Open' %}
+                <select id="status" name="status">
+                    {% for option in status_options %}
+                    <option value="{{ option }}" {% if current_status == option %}selected{% endif %}>{{ option }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="full">
+                <label class="form-label">ISO/IEC 27001:2022 Annex A control mapping</label>
+                <div class="field-note">Select only controls relevant to this risk. Applicability and effectiveness require separate assessment.</div>
+                {% set selected_controls = edit_risk.iso_controls.split(', ') if edit_risk and edit_risk.iso_controls else [] %}
+                <div class="control-list">
+                    {% for code, description in controls %}
+                    <label class="control-option">
+                        <input type="checkbox" name="iso_controls" value="{{ code }}"
+                               {% if code in selected_controls %}checked{% endif %}>
+                        <span><strong>{{ code }}</strong> — {{ description }}</span>
+                    </label>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <div style="margin-top:22px; display:flex; gap:10px; flex-wrap:wrap;">
+            <button class="button" type="submit">{% if edit_risk %}Save changes{% else %}Create risk{% endif %}</button>
+            {% if edit_risk %}<a class="link-button" href="{{ url_for('risk_register_page') }}">Cancel</a>{% endif %}
+        </div>
+    </form>
+</div>
+
+<div class="panel">
+    <div class="panel-heading">
+        <div>
+            <h2>Filter risks</h2>
+            <p class="subtitle">Filters affect the displayed list and summary only.</p>
+        </div>
+    </div>
+    <form method="get" action="{{ url_for('risk_register_page') }}">
+        <div class="risk-filter-grid">
+            <label>Status
+                <select name="status">
+                    <option value="All" {% if status_filter == 'All' %}selected{% endif %}>All statuses</option>
+                    {% for option in status_options %}
+                    <option value="{{ option }}" {% if status_filter == option %}selected{% endif %}>{{ option }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label>Risk owner
+                <select name="owner">
+                    <option value="All" {% if owner_filter == 'All' %}selected{% endif %}>All owners</option>
+                    {% for owner in owner_options %}
+                    <option value="{{ owner }}" {% if owner_filter == owner %}selected{% endif %}>{{ owner }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label>Due date
+                <select name="due_filter">
+                    {% for value, label in [('All', 'All due dates'), ('Overdue', 'Overdue'), ('Missing due date', 'Missing due date'), ('Due date set', 'Due date set')] %}
+                    <option value="{{ value }}" {% if due_filter == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+        </div>
+        <div class="risk-filter-actions">
+            <button class="button" type="submit">Apply filters</button>
+            <a class="link-button" href="{{ url_for('risk_register_page') }}">Clear filters</a>
+            <span class="muted small">Showing {{ stats.total }} risk(s)</span>
+        </div>
+    </form>
+</div>
+
+<div class="panel">
+    <div class="panel-heading">
+        <div>
+            <h2>Risk register</h2>
+            <p class="subtitle">Sorted by residual risk level, with the highest levels first.</p>
+        </div>
+    </div>
+
+    {% if risks %}
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Risk</th>
+                    <th>Inherent</th>
+                    <th>Residual</th>
+                    <th>Owner / due date</th>
+                    <th>Status</th>
+                    <th>Review flags</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for risk in risks %}
+                <tr>
+                    <td>
+                        <strong>#{{ risk.id }} · {{ risk.title }}</strong>
+                        <div class="muted small" style="margin-top:5px;">{{ risk.asset or 'No asset specified' }} · {{ risk.category }}</div>
+                        {% if risk.source_finding_id %}
+                        <div class="muted small" style="margin-top:6px;">
+                            Source finding:
+                            <a href="{{ url_for('automatic_risks.findings_page', status='All') }}#finding-{{ risk.source_finding_id }}">
+                                #{{ risk.source_finding_id }} · {{ risk.source_finding_title }}
+                            </a>
+                            <span>({{ risk.source_finding_source }})</span>
+                        </div>
+                        {% endif %}
+                        {% if risk.source_scan_id %}
+                        <div class="muted small" style="margin-top:6px;">
+                            Source scan:
+                            <a href="{{ url_for('scan_history_detail', scan_id=risk.source_scan_id) }}">
+                                #{{ risk.source_scan_id }} · {{ risk.source_scan_target }}
+                            </a>
+                            {% if risk.source_scan_started_at %}
+                            <div>Started (UTC): {{ risk.source_scan_started_at }}</div>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+                        {% if risk.business_impact %}
+                        <div class="risk-description small" style="margin-top:8px;">{{ risk.business_impact }}</div>
+                        {% endif %}
+                        {% if risk.iso_controls %}
+                        <div class="muted small" style="margin-top:6px;">Controls: {{ risk.iso_controls }}</div>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <strong>{{ risk.inherent_score }}/25</strong><br>
+                        <span class="risk-pill level-{{ risk.inherent_level }}">{{ risk.inherent_level }}</span>
+                        <div class="muted small">{{ risk.inherent_likelihood }} × {{ risk.inherent_impact }}</div>
+                    </td>
+                    <td>
+                        <strong>{{ risk.residual_score }}/25</strong><br>
+                        <span class="risk-pill level-{{ risk.residual_level }}">{{ risk.residual_level }}</span>
+                        <div class="muted small">{{ risk.residual_likelihood }} × {{ risk.residual_impact }}</div>
+                    </td>
+                    <td>
+                        {{ risk.owner or 'Unassigned' }}
+                        <div class="muted small" style="margin-top:5px;">
+                            Due: {{ risk.due_date or 'Not set' }}
+                        </div>
+                        {% if not risk.due_date %}
+                            <span class="due-warning">Due date missing</span>
+                        {% elif risk.due_date < today_date and risk.status != 'Remediated' %}
+                            <span class="due-overdue">Overdue</span>
+                        {% elif risk.due_date >= today_date %}
+                            <span class="due-warning">Due date set</span>
+                        {% endif %}
+                    </td>
+                    <td><span class="status">{{ risk.status }}</span></td>
+                    <td>
+                        {% if risk.review_flags %}
+                            {% for flag in risk.review_flags %}
+                                <div class="{% if flag == 'High-priority overdue risk' %}due-overdue{% else %}due-warning{% endif %}"
+                                     style="margin: 3px 0;">
+                                    {{ flag }}
+                                </div>
+                            {% endfor %}
+                        {% else %}
+                            <span class="muted small">No completeness flags</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="actions">
+                            <a class="link-button" href="{{ url_for('risk_register_page', edit=risk.id) }}">Edit</a>
+                            <form method="post" action="{{ url_for('delete_risk', risk_id=risk.id) }}"
+                                  onsubmit="return confirm('Delete this risk assessment? This cannot be undone.');">
+                                <button class="link-button delete-button" type="submit">Delete</button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty">
+        <strong>No risks recorded yet.</strong>
+        <p>Create your first assessment using the form above.</p>
+    </div>
+    {% endif %}
+</div>
+
+<div class="notice">
+    <strong>Scoring guide:</strong>
+    1–4 Low · 5–9 Medium · 10–16 High · 17–25 Critical.
+    These are the project's configurable working thresholds, not an ISO-mandated scoring scale.
+    A risk score does not by itself establish compliance or prove a vulnerability.
+</div>
+{% endblock %}

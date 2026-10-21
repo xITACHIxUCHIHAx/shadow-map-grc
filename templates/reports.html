@@ -1,0 +1,513 @@
+{% extends "base.html" %}
+
+{% block title %}Reports & GRC | Shadow Map GRC{% endblock %}
+
+{% block header %}
+<div class="report-header">
+    <div>
+        <h1>Reports & GRC</h1>
+        <p class="subtitle">Risk and security findings assessment report</p>
+    </div>
+    <button type="button" class="button no-print" onclick="window.print()">
+        Print / Save as PDF
+    </button>
+</div>
+{% endblock %}
+
+{% block content %}
+<style>
+    .report-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+        gap: 12px;
+        margin-bottom: 20px;
+    }
+    .report-metric {
+        border: 1px solid var(--border-color, #d8dee8);
+        border-radius: 10px;
+        padding: 15px;
+        min-width: 0;
+    }
+    .report-metric .metric-label {
+        color: var(--muted, #667085);
+        font-size: 0.85rem;
+    }
+    .report-metric .metric-value {
+        font-size: 1.7rem;
+        font-weight: 700;
+        margin-top: 5px;
+    }
+    .report-section { margin-bottom: 22px; }
+    .report-section h2 { margin-bottom: 12px; }
+    .report-table-wrap { overflow-x: auto; }
+    .report-table { width: 100%; border-collapse: collapse; }
+    .report-table th, .report-table td {
+        padding: 10px;
+        text-align: left;
+        vertical-align: top;
+        border-bottom: 1px solid var(--border-color, #d8dee8);
+        overflow-wrap: anywhere;
+    }
+    .report-table th { font-size: 0.85rem; }
+    .report-note {
+        border-left: 3px solid var(--border-color, #aab4c5);
+        padding: 10px 13px;
+        margin: 12px 0;
+    }
+    .report-title { font-weight: 650; }
+    .report-meta { font-size: 0.85rem; color: var(--muted, #667085); margin-top: 4px; }
+    .report-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    @page {
+        size: A4 portrait;
+        margin: 14mm 12mm 16mm;
+    }
+
+    @media print {
+        html, body {
+            width: auto !important;
+            min-width: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #fff !important;
+            color: #000 !important;
+        }
+
+        body {
+            font-size: 9pt;
+            line-height: 1.35;
+        }
+
+        .no-print, nav, aside, .sidebar {
+            display: none !important;
+        }
+
+        main, .panel {
+            width: 100% !important;
+            max-width: none !important;
+            margin: 0 !important;
+            background: #fff !important;
+            color: #000 !important;
+            border: 0 !important;
+            box-shadow: none !important;
+            padding: 0 !important;
+            overflow: visible !important;
+        }
+
+        .report-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px;
+        }
+
+        .report-metric {
+            min-width: 0 !important;
+            padding: 8px !important;
+            border: 1px solid #ccc !important;
+            break-inside: avoid;
+            page-break-inside: avoid;
+        }
+
+        .report-metric .metric-value {
+            font-size: 15pt;
+        }
+
+        .report-section {
+            width: 100% !important;
+            margin-bottom: 14px;
+            break-inside: auto;
+        }
+
+        .report-section h2 {
+            break-after: avoid-page;
+            page-break-after: avoid;
+        }
+
+        .report-table-wrap {
+            width: 100% !important;
+            max-width: 100% !important;
+            overflow: visible !important;
+        }
+
+        .report-table {
+            width: 100% !important;
+            max-width: 100% !important;
+            table-layout: fixed;
+            border-collapse: collapse;
+            font-size: 8pt;
+        }
+
+        .report-table th,
+        .report-table td {
+            padding: 4px !important;
+            vertical-align: top;
+            white-space: normal !important;
+            overflow-wrap: anywhere;
+            word-break: normal;
+        }
+
+        .report-table thead {
+            display: table-header-group;
+        }
+
+        .report-table tr {
+            break-inside: avoid;
+            page-break-inside: avoid;
+        }
+
+        .report-note {
+            break-inside: avoid;
+            page-break-inside: avoid;
+        }
+
+        a {
+            color: #000 !important;
+            text-decoration: none !important;
+            overflow-wrap: anywhere;
+        }
+
+        img, pre, code {
+            max-width: 100% !important;
+            overflow-wrap: anywhere;
+        }
+    }
+</style>
+
+
+<section class="panel no-print" aria-labelledby="report-filter-heading">
+    <h2 id="report-filter-heading">Choose report scope</h2>
+    <p class="muted small">
+        Select one or more stored hosts/IPs and the report sections to include.
+        Use Ctrl+P only after applying your selection.
+    </p>
+    <form method="get" action="{{ url_for('reports_page') }}">
+        <input type="hidden" name="target_filter" value="1">
+
+        <fieldset style="border:1px solid var(--border-color, #d8dee8); border-radius:8px; padding:12px; margin-bottom:14px;">
+            <legend><strong>Targets / hosts</strong></legend>
+            <label style="display:block; margin:6px 0;">
+                <input type="checkbox" name="all_targets" value="1"
+                       {% if all_targets_selected %}checked{% endif %}
+                       onchange="document.querySelectorAll('.report-target-choice').forEach(function(el){el.disabled=this.checked}.bind(this))">
+                All targets
+            </label>
+            {% for target in available_targets %}
+            <label style="display:block; margin:6px 0; overflow-wrap:anywhere;">
+                <input class="report-target-choice" type="checkbox" name="target"
+                       value="{{ target }}" {% if target in selected_targets and not all_targets_selected %}checked{% endif %}
+                       {% if all_targets_selected %}disabled{% endif %}>
+                {{ target }}
+            </label>
+            {% else %}
+            <p class="muted">No saved targets were found.</p>
+            {% endfor %}
+        </fieldset>
+
+        <fieldset style="border:1px solid var(--border-color, #d8dee8); border-radius:8px; padding:12px; margin-bottom:14px;">
+            <legend><strong>Report sections</strong></legend>
+            <label style="display:block; margin:6px 0;">
+                <input type="checkbox" name="section" value="findings"
+                       {% if 'findings' in selected_sections %}checked{% endif %}>
+                Findings
+            </label>
+            <label style="display:block; margin:6px 0;">
+                <input type="checkbox" name="section" value="risks"
+                       {% if 'risks' in selected_sections %}checked{% endif %}>
+                Risks and follow-up
+            </label>
+        </fieldset>
+
+        <div class="report-actions">
+            <button type="submit" class="button">Apply filters</button>
+            <a class="link-button" href="{{ url_for('reports_page') }}">Reset filters</a>
+            <a class="link-button"
+               href="{{ url_for('export_reports_csv',
+                   target_filter=1,
+                   all_targets='1' if all_targets_selected else None,
+                   target=selected_targets,
+                   section=selected_sections) }}">Download CSV</a>
+        </div>
+    </form>
+</section>
+
+<section class="panel">
+    <div class="report-header">
+        <div>
+            <h2>GRC Risk & Findings Report</h2>
+            <p class="muted small">Generated: {{ generated_at }}</p>
+            <p class="muted small">
+                Targets:
+                {% if all_targets_selected %}
+                    All stored targets
+                {% elif selected_targets %}
+                    {{ selected_targets|join(', ') }}
+                {% else %}
+                    No targets selected
+                {% endif %}
+            </p>
+            <p class="muted small">
+                Included sections:
+                {% if selected_sections %}
+                    {{ selected_sections|join(', ')|title }}
+                {% else %}
+                    None
+                {% endif %}
+            </p>
+        </div>
+    </div>
+
+    <div class="report-note">
+        <strong>Scope and limitation:</strong>
+        This report summarizes records currently stored in Shadow Map GRC.
+        Scanner observations and missing security headers are not, by themselves,
+        proof of an exploitable vulnerability. This report is not an ISO/IEC 27001
+        certification or a declaration of compliance.
+    </div>
+
+    <div class="report-grid">
+        {% if show_findings %}
+        <div class="report-metric">
+            <div class="metric-label">Total findings</div>
+            <div class="metric-value">{{ findings|length }}</div>
+        </div>
+        <div class="report-metric">
+            <div class="metric-label">Draft findings</div>
+            <div class="metric-value">{{ finding_status_counts.get('Draft', 0) }}</div>
+        </div>
+        <div class="report-metric">
+            <div class="metric-label">Approved findings</div>
+            <div class="metric-value">{{ finding_status_counts.get('Approved', 0) }}</div>
+        </div>
+        {% endif %}
+        {% if show_findings %}
+        <div class="report-metric">
+            <div class="metric-label">Linked findings</div>
+            <div class="metric-value">{{ risk_stats.linked_findings }}</div>
+        </div>
+        {% endif %}
+        {% if show_risks %}
+        <div class="report-metric">
+            <div class="metric-label">Risk assessments</div>
+            <div class="metric-value">{{ risk_stats.total }}</div>
+        </div>
+        <div class="report-metric">
+            <div class="metric-label">Open risks</div>
+            <div class="metric-value">{{ risk_stats.open }}</div>
+        </div>
+        <div class="report-metric">
+            <div class="metric-label">High / critical residual risks</div>
+            <div class="metric-value">{{ risk_stats.high_critical }}</div>
+        </div>
+        <div class="report-metric">
+            <div class="metric-label">Overdue risks</div>
+            <div class="metric-value">{{ risk_stats.overdue }}</div>
+        {% endif %}
+        </div>
+    </div>
+
+    {% if show_findings %}
+    <div class="report-section">
+        <h2>1. Findings register</h2>
+        {% if findings %}
+        <div class="report-table-wrap">
+            <table class="report-table">
+                <thead>
+                    <tr>
+                        <th>ID / finding</th>
+                        <th>Source / target</th>
+                        <th>Severity / confidence</th>
+                        <th>Status</th>
+                        <th>Linked risk</th>
+                        <th>Evidence and recommendation</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for finding in findings %}
+                    <tr>
+                        <td>
+                            <div class="report-title">#{{ finding.id }} · {{ finding.title }}</div>
+                            <div class="report-meta">{{ finding.created_at or 'Date not recorded' }}</div>
+                        </td>
+                        <td>
+                            {{ finding.source|replace('_', ' ')|title }}
+                            <div class="report-meta">{{ finding.target or 'Target not recorded' }}</div>
+                        </td>
+                        <td>
+                            {{ finding.suggested_severity or 'Not rated' }}
+                            <div class="report-meta">Confidence: {{ finding.confidence or 'Not recorded' }}</div>
+                        </td>
+                        <td>{{ finding.status }}</td>
+                        <td>
+                            {% if finding.risk_id %}
+                                Risk #{{ finding.risk_id }}
+                                {% if finding.linked_risk_title %}
+                                    <div class="report-meta">{{ finding.linked_risk_title }}</div>
+                                    <div class="report-meta">
+                                        Residual: {{ finding.linked_residual_score }}/25
+                                        ({{ finding.linked_residual_level }})
+                                    </div>
+                                {% endif %}
+                            {% else %}
+                                Not linked
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if finding.evidence %}
+                                <div><strong>Evidence:</strong> {{ finding.evidence }}</div>
+                            {% endif %}
+                            {% if finding.recommendation %}
+                                <div style="margin-top:5px;"><strong>Recommended action:</strong> {{ finding.recommendation }}</div>
+                            {% endif %}
+                            {% if finding.iso_reviews %}
+                                <div class="report-meta" style="margin-top:7px;">
+                                    <strong>ISO control reviews:</strong>
+                                </div>
+                                {% for review in finding.iso_reviews %}
+                                    <div class="report-meta" style="margin-top:4px;">
+                                        {{ review.control_code }} — {{ review.review_status }}
+                                        · Reviewer: {{ review.reviewed_by or 'Not assigned' }}
+                                        · Rationale: {{ review.rationale or 'Not provided' }}
+                                    </div>
+                                {% endfor %}
+                            {% elif finding.iso_controls %}
+                                <div class="report-meta" style="margin-top:7px;">
+                                    ISO mappings recorded; no current control-review details.
+                                </div>
+                            {% endif %}
+                            {% if not finding.evidence and not finding.recommendation and not finding.iso_reviews %}
+                                Not recorded
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+            <p class="muted">No findings are currently recorded.</p>
+        {% endif %}
+    </div>
+
+    {% endif %}
+
+    {% if show_risks %}
+    <div class="report-section">
+        <h2>2. Risk register summary</h2>
+        <p class="muted small">
+            Inherent risk represents risk before controls; residual risk represents
+            the reassessed risk after considering controls. Scores are the values
+            recorded in the application and are not independently validated here.
+        </p>
+        {% if risks %}
+        <div class="report-table-wrap">
+            <table class="report-table">
+                <thead>
+                    <tr>
+                        <th>Risk</th>
+                        <th>Inherent</th>
+                        <th>Residual</th>
+                        <th>Owner / due date</th>
+                        <th>Treatment / controls</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for risk in risks %}
+                    <tr>
+                        <td>
+                            <div class="report-title">#{{ risk.id }} · {{ risk.title }}</div>
+                            <div class="report-meta">{{ risk.asset or 'No asset specified' }} · {{ risk.category }}</div>
+                        </td>
+                        <td>{{ risk.inherent_score }}/25 · {{ risk.inherent_level }}</td>
+                        <td>{{ risk.residual_score }}/25 · {{ risk.residual_level }}</td>
+                        <td>
+                            {{ risk.owner or 'Unassigned' }}
+                            <div class="report-meta">Due: {{ risk.due_date or 'Not set' }}</div>
+                            {% if not risk.due_date %}
+                                <div class="report-meta">Follow-up: due date missing</div>
+                            {% elif risk.due_date < today_date and risk.status != 'Remediated' %}
+                                <div class="report-meta">Follow-up: overdue</div>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {{ risk.treatment or 'No treatment plan recorded' }}
+                            {% if risk.iso_controls %}
+                                <div class="report-meta">Control mapping: {{ risk.iso_controls }}</div>
+                            {% endif %}
+                            {% if risk.iso_reviews %}
+                                <div class="report-meta" style="margin-top:7px;"><strong>ISO control reviews:</strong></div>
+                                {% for review in risk.iso_reviews %}
+                                    <div class="report-meta" style="margin-top:4px;">
+                                        {{ review.control_code }} — {{ review.review_status }}
+                                        · Reviewer: {{ review.reviewed_by or 'Not assigned' }}
+                                        · Rationale: {{ review.rationale or 'Not provided' }}
+                                    </div>
+                                {% endfor %}
+                            {% elif risk.iso_controls %}
+                                <div class="report-meta">No current control-review details.</div>
+                            {% endif %}
+                            {% if risk.evidence %}
+                                <div class="report-meta">Evidence/reference: {{ risk.evidence }}</div>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {{ risk.status }}
+                            {% if risk.review_flags %}
+                                {% for flag in risk.review_flags %}
+                                    <div class="report-meta" style="margin-top:4px;">
+                                        <strong>Review:</strong> {{ flag }}
+                                    </div>
+                                {% endfor %}
+                            {% else %}
+                                <div class="report-meta">No completeness flags</div>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+            <p class="muted">No risk assessments are currently recorded.</p>
+        {% endif %}
+    </div>
+
+    {% endif %}
+
+    {% if show_risks or show_findings %}
+    <div class="report-section">
+        <h2>3. Follow-up summary</h2>
+        <ul>
+            {% if show_risks %}
+            <li>{{ risk_stats.missing_due_date }} risk assessment(s) have no due date.</li>
+            <li>{{ risk_stats.owner_missing }} risk assessment(s) have no recorded owner.</li>
+            <li>{{ risk_stats.treatment_missing }} non-remediated risk assessment(s) have no treatment plan recorded.</li>
+            <li>{{ risk_stats.overdue }} risk assessment(s) are past their due date and not marked Remediated.</li>
+            <li>{{ risk_stats.high_critical_overdue }} high/critical residual risk(s) are overdue and not marked Remediated.</li>
+            <li>{{ risk_stats.remediated }} risk assessment(s) are marked Remediated in the register; this report does not independently verify remediation.</li>
+            {% endif %}
+            {% if show_findings %}
+            <li>{{ finding_status_counts.get('Dismissed', 0) }} finding(s) are marked Dismissed.</li>
+            {% endif %}
+        </ul>
+    </div>
+
+    {% endif %}
+
+    {% if show_findings or show_risks %}
+    <div class="report-note">
+        <strong>Recommended review:</strong>
+        Confirm evidence quality, assign accountable owners, set realistic due dates,
+        verify implemented controls, and document residual-risk decisions.
+        Validate any ISO control mapping against the organization's scope,
+        Statement of Applicability, and actual implementation.
+    </div>
+
+    <div class="report-actions no-print">
+        <a class="link-button" href="{{ url_for('risk_register_page') }}">Open Risk Register</a>
+        <a class="link-button" href="{{ url_for('automatic_risks.findings_page', status='All') }}">Open Findings Review</a>
+        <button type="button" class="link-button" onclick="window.print()">Print / Save as PDF</button>
+    </div>
+    {% else %}
+    <p class="report-note">No report sections selected. Select Findings and/or Risks above, then apply filters.</p>
+    {% endif %}
+</section>
+{% endblock %}

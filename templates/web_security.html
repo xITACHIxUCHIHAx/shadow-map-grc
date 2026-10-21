@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+
+{% block title %}Web Security | Shadow Map GRC{% endblock %}
+
+{% block header %}
+<h1>Web Security</h1>
+<p class="subtitle">Read-only HTTPS configuration and response-header checks.</p>
+{% endblock %}
+
+{% block content %}
+<section class="panel">
+    <div class="panel-heading">
+        <div>
+            <h2>Check a public website</h2>
+            <p class="subtitle">
+                Checks the HTTPS response, selected security headers, and
+                cookie attributes returned by the initial response.
+            </p>
+        </div>
+    </div>
+
+    <form method="post" action="{{ url_for('web_security_page') }}">
+        <label class="form-label" for="target">Public hostname or HTTPS URL</label>
+        <input
+            type="text"
+            id="target"
+            name="target"
+            value="{{ target }}"
+            placeholder="example.com or https://example.com"
+            maxlength="2048"
+            required
+        >
+
+        <label class="module" style="margin: 16px 0;">
+            <input type="checkbox" name="authorized" value="yes" required>
+            <div>
+                <strong>Authorized target confirmation</strong>
+                <span>I own this website or have explicit permission to assess it.</span>
+            </div>
+        </label>
+
+        <button class="button" type="submit">Check HTTPS Headers</button>
+    </form>
+
+    <div class="notice">
+        <strong>Scope:</strong> HTTPS only, standard port 443, bounded redirects,
+        connection timeouts, and no page-body download. Private and non-public
+        IP targets are blocked. This is not a vulnerability scan or penetration test.
+    </div>
+</section>
+
+{% if error %}
+<section class="panel">
+    <div class="notice"><strong>Check not completed:</strong> {{ error }}</div>
+</section>
+{% endif %}
+
+{% if result %}
+<section class="panel">
+    <div class="panel-heading">
+        <div>
+            <h2>HTTPS response</h2>
+            <p class="subtitle">{{ result.target }}</p>
+        </div>
+        <span class="status">HTTP {{ result.status_code }}</span>
+    </div>
+
+    <div class="module-grid">
+        <div class="module">
+            <div>
+                <strong>Headers present</strong>
+                <span>{{ result.headers|selectattr('present')|list|length }} of {{ result.headers|length }}</span>
+            </div>
+        </div>
+        <div class="module">
+            <div>
+                <strong>Missing headers</strong>
+                <span>{{ result.missing_headers }}</span>
+            </div>
+        </div>
+        <div class="module">
+            <div>
+                <strong>Cookies observed</strong>
+                <span>{{ result.cookies|length }}</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="panel-heading">
+        <h2>Security header observations</h2>
+    </div>
+
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Header</th>
+                    <th>Observed</th>
+                    <th>Assessment</th>
+                    <th>Value</th>
+                    <th>Purpose</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in result.headers %}
+                <tr>
+                    <td>{{ item.name }}</td>
+                    <td>
+                        {% if item.present %}
+                            <span class="status">Present</span>
+                        {% else %}
+                            <span class="status">Missing</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ item.assessment }}</td>
+                    <td>{{ item.value or "—" }}</td>
+                    <td>{{ item.purpose }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="panel-heading">
+        <h2>Cookie attributes</h2>
+    </div>
+
+    {% if result.cookies %}
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Cookie response</th>
+                    <th>Secure</th>
+                    <th>HttpOnly</th>
+                    <th>SameSite</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for cookie in result.cookies %}
+                <tr>
+                    <td>Cookie {{ cookie.number }}</td>
+                    <td>{{ "Yes" if cookie.secure else "Not observed" }}</td>
+                    <td>{{ "Yes" if cookie.httponly else "Not observed" }}</td>
+                    <td>{{ "Yes" if cookie.samesite else "Not observed" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="muted">No Set-Cookie headers were observed in this response. Other pages may behave differently.</p>
+    {% endif %}
+
+    <div class="notice">
+        <strong>Interpretation:</strong>
+        These are configuration observations, not confirmed vulnerabilities.
+        Review each result in the context of the website and its application requirements.
+    </div>
+
+    <h2>Limitations</h2>
+    <ul>
+        {% for note in result.notes %}
+        <li>{{ note }}</li>
+        {% endfor %}
+    </ul>
+</section>
+{% endif %}
+{% endblock %}

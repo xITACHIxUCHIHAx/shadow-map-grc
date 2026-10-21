@@ -1,0 +1,297 @@
+{% extends "base.html" %}
+{% block title %}Finding Review | Shadow Map GRC{% endblock %}
+{% block header %}
+<h1>Finding Review</h1>
+<p class="subtitle">Review automatically generated observations before adding them to the risk register.</p>
+{% endblock %}
+{% block content %}
+<style>
+.finding-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:20px}
+.finding-stat,.finding-card{background:white;border:1px solid var(--border);border-radius:12px;padding:17px}
+.finding-number{font-size:25px;font-weight:750;margin-top:6px}
+.finding-meta{color:var(--muted);font-size:12px}
+.finding-card{margin-bottom:14px}
+.finding-card h2{line-height:1.5;margin-bottom:10px}
+.finding-evidence{background:#f7f9fc;border-radius:8px;padding:12px;overflow-wrap:anywhere;line-height:1.6;font-size:12px}
+.finding-form{display:flex;flex-wrap:wrap;align-items:end;gap:10px;margin-top:14px}
+.finding-form label,.bulk-controls label{display:block;font-size:12px;font-weight:650;margin-bottom:5px}
+.finding-form select,.bulk-controls select{padding:9px;border:1px solid var(--border);border-radius:7px;background:white}
+.finding-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.finding-actions form{margin:0}
+.secondary-button{background:white;color:var(--text);border:1px solid var(--border);border-radius:8px;padding:10px 13px;font:inherit;cursor:pointer}
+.bulk-panel{margin:16px 0 20px}
+.bulk-controls{display:flex;flex-wrap:wrap;align-items:end;gap:12px;margin-top:14px}
+.bulk-check{width:18px;height:18px;vertical-align:middle;margin-right:8px}
+.finding-title-row{display:flex;align-items:flex-start;gap:8px}
+.finding-title-row h2{flex:1}
+.danger-button{background:#fff5f5;color:#a61b1b;border:1px solid #e7b4b4;border-radius:8px;padding:10px 13px;font:inherit;cursor:pointer}
+
+.finding-filter{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.finding-filter a{display:inline-flex;padding:8px 13px;border:1px solid var(--border);border-radius:8px;text-decoration:none;color:var(--text);background:white;font-size:13px}
+.finding-filter a[aria-current="page"]{background:var(--primary,#253b60);color:white;border-color:var(--primary,#253b60)}
+.finding-status{display:inline-block;padding:3px 8px;border-radius:999px;background:#f1f5f9;color:#334155;font-size:11px;font-weight:700}
+.finding-review-note{padding:12px 14px;border:1px solid var(--border);border-radius:9px;background:#f8fafc;margin:12px 0;font-size:13px;line-height:1.6}
+.finding-empty{padding:22px;border:1px dashed var(--border);border-radius:12px;background:white}
+.finding-empty h2{margin:0 0 8px}
+.finding-empty p{line-height:1.65}
+.finding-card h2{overflow-wrap:anywhere}
+
+.review-filter-panel{display:flex;flex-wrap:wrap;align-items:flex-start;gap:14px;margin-top:16px;padding-top:16px;border-top:1px solid var(--border)}
+.review-filter-field{display:flex;flex-direction:column;gap:6px;min-width:190px;flex:1 1 200px}
+.review-filter-field label{font-size:12px;font-weight:650}
+.review-filter-field input[type="search"],.review-filter-field select{box-sizing:border-box;width:100%;min-width:0;padding:9px;border:1px solid var(--border);border-radius:7px;background:white;color:var(--text)}
+.review-target-picker{max-width:460px;flex:1 1 280px}
+.review-target-actions{display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin:4px 0}
+.review-target-actions button{padding:6px 9px;font-size:12px}
+.review-target-list{max-height:210px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:8px;background:white;min-width:0}
+.review-target-option{display:flex;align-items:flex-start;gap:8px;padding:7px 4px;font-size:13px;overflow-wrap:anywhere;cursor:pointer}
+.review-target-option input{margin-top:3px;flex-shrink:0}
+.review-target-option span{flex:1;min-width:0;overflow-wrap:anywhere}
+.review-filter-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.review-filter-actions a{text-decoration:none;display:inline-flex;align-items:center}
+@media(max-width:520px){.finding-stats{grid-template-columns:1fr}.finding-stat{padding:14px}}
+
+@media(max-width:520px){.finding-stats{grid-template-columns:1fr}}
+</style>
+
+<div class="finding-stats">
+  <div class="finding-stat"><div class="finding-meta">DRAFTS TO REVIEW</div><div class="finding-number">{{ counts.Draft }}</div></div>
+  <div class="finding-stat"><div class="finding-meta">APPROVED</div><div class="finding-number">{{ counts.Approved }}</div></div>
+  <div class="finding-stat"><div class="finding-meta">DISMISSED</div><div class="finding-number">{{ counts.Dismissed }}</div></div>
+</div>
+
+<div class="panel">
+  <div class="panel-heading">
+    <div><h2>Finding queue</h2><p class="subtitle">Approval creates a risk-register entry; it does not confirm a vulnerability.</p></div>
+  </div>
+  <nav class="finding-filter" aria-label="Filter findings by review status">
+    {% for value in ['Draft','Approved','Dismissed','All'] %}
+      <a href="{{ url_for('automatic_risks.findings_page', status=value, source=source_filter, q=search_query, host=selected_hosts) }}"
+         {% if status_filter == value %}aria-current="page"{% endif %}>
+        {{ value }}{% if value != 'All' %} ({{ counts[value] }}){% endif %}
+      </a>
+    {% endfor %}
+  </nav>
+
+  <form method="get" class="review-filter-panel">
+    <input type="hidden" name="status" value="{{ status_filter }}">
+
+    <div class="review-filter-field">
+      <label for="review-search">Search target or finding</label>
+      <input id="review-search" type="search" name="q"
+             value="{{ search_query }}"
+             placeholder="Search IP, domain, or title">
+    </div>
+
+    <div class="review-filter-field">
+      <label for="review-source">Finding source</label>
+      <select id="review-source" name="source">
+        <option value="all" {% if source_filter == 'all' %}selected{% endif %}>All sources</option>
+        <option value="nmap" {% if source_filter == 'nmap' %}selected{% endif %}>Nmap</option>
+        <option value="web_security" {% if source_filter == 'web_security' %}selected{% endif %}>Web Security</option>
+      </select>
+    </div>
+
+    <div class="review-filter-field review-target-picker">
+      <label for="review-target-search">Choose saved hosts / IPs</label>
+      <input id="review-target-search" type="search"
+             placeholder="Search saved targets..." autocomplete="off">
+
+      <div class="review-target-actions">
+        <button class="secondary-button" type="button" id="review-select-visible">Select visible</button>
+        <button class="secondary-button" type="button" id="review-clear-targets">Clear selection</button>
+        <span class="finding-meta">{{ available_targets|length }} saved target(s)</span>
+      </div>
+
+      <div class="review-target-list" id="review-target-list">
+        {% for target in available_targets %}
+          <label class="review-target-option" data-target="{{ target|lower }}">
+            <input type="checkbox" name="host" value="{{ target }}"
+                   {% if target in selected_hosts %}checked{% endif %}>
+            <span>{{ target }}</span>
+          </label>
+        {% else %}
+          <p class="finding-meta">No saved targets found yet. Complete a scan first.</p>
+        {% endfor %}
+      </div>
+      <p class="finding-meta">Leave all targets unchecked to include every target.</p>
+    </div>
+
+    <div class="review-filter-actions">
+      <button class="button" type="submit">Apply filters</button>
+      <a class="secondary-button" href="{{ url_for('automatic_risks.findings_page', status=status_filter) }}">Clear filters</a>
+    </div>
+  </form>
+</div>
+
+{% if counts.Draft > 0 %}
+<div class="panel bulk-panel">
+  <h2>Bulk approval</h2>
+  <p class="subtitle">Choose individual drafts below, or approve all pending drafts. Bulk approval uses the same likelihood and impact for each selected finding.</p>
+  <div class="finding-review-note">
+    <strong>Before approving:</strong> assess likelihood and business impact using available evidence.
+    The default score of 3 is provisional, not a recommendation for every finding.
+    A score of 3 × 3 produces an inherent risk score of 9.
+  </div>
+
+  <form id="bulk-approval-form" method="post"
+        action="{{ url_for('automatic_risks.bulk_approve_findings') }}"
+        onsubmit="return confirmBulkApproval(event);">
+    <div class="bulk-controls">
+      <div>
+        <label for="bulk-likelihood">Likelihood (1–5)</label>
+        <select id="bulk-likelihood" name="likelihood">
+          {% for n in range(1,6) %}<option value="{{ n }}" {% if n == 3 %}selected{% endif %}>{{ n }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label for="bulk-impact">Impact (1–5)</label>
+        <select id="bulk-impact" name="impact">
+          {% for n in range(1,6) %}<option value="{{ n }}" {% if n == 3 %}selected{% endif %}>{{ n }}</option>{% endfor %}
+        </select>
+      </div>
+      <button class="button" type="submit" name="action" value="selected">Approve Selected</button>
+      <button class="danger-button" type="submit" name="action" value="all">Approve All Pending ({{ counts.Draft }})</button>
+    </div>
+    <p class="finding-meta">Default scores are provisional (3 × 3 = 9). Review and update each risk assessment as needed.</p>
+  </form>
+</div>
+{% endif %}
+
+{% if findings %}
+  {% for finding in findings %}
+  <div class="finding-card" id="finding-{{ finding.id }}">
+    <div class="finding-meta">
+      {{ finding.source|upper }} · {{ finding.target }} · {{ finding.created_at }}
+      · <span class="finding-status">{{ finding.status }}</span>
+    </div>
+
+    <div class="finding-title-row" style="margin-top:9px;">
+      {% if finding.status == 'Draft' %}
+        <input class="bulk-check" type="checkbox" name="finding_ids"
+               value="{{ finding.id }}" form="bulk-approval-form"
+               aria-label="Select finding {{ finding.id }}">
+      {% endif %}
+      <h2>{{ finding.title }}</h2>
+    </div>
+
+    <p style="line-height:1.7;">{{ finding.description }}</p>
+    <p><strong>Suggested severity:</strong> {{ finding.suggested_severity }}
+       &nbsp; <strong>Confidence:</strong> {{ finding.confidence }}</p>
+    <p><strong>Recommended next step:</strong> {{ finding.recommendation }}</p>
+    <p><strong>ISO control suggestions:</strong> {{ finding.iso_controls or 'Not mapped' }}</p>
+    <div class="finding-evidence"><strong>Evidence:</strong><br>{{ finding.evidence }}</div>
+
+    {% if finding.status == 'Draft' %}
+    <form method="post" action="{{ url_for('automatic_risks.approve_finding', finding_id=finding.id) }}" class="finding-form">
+      <div>
+        <label for="likelihood-{{ finding.id }}">Assessed likelihood (1–5)</label>
+        <select id="likelihood-{{ finding.id }}" name="likelihood" required>
+          {% for n in range(1,6) %}<option value="{{ n }}" {% if n == 3 %}selected{% endif %}>{{ n }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label for="impact-{{ finding.id }}">Assessed impact (1–5)</label>
+        <select id="impact-{{ finding.id }}" name="impact" required>
+          {% for n in range(1,6) %}<option value="{{ n }}" {% if n == 3 %}selected{% endif %}>{{ n }}</option>{% endfor %}
+        </select>
+      </div>
+      <button class="button" type="submit">Approve This Finding</button>
+    </form>
+    <div class="finding-actions">
+      <form method="post" action="{{ url_for('automatic_risks.dismiss_finding', finding_id=finding.id) }}"
+            onsubmit="return confirm('Dismiss this draft finding?');">
+        <button class="secondary-button" type="submit">Dismiss</button>
+      </form>
+    </div>
+    {% elif finding.risk_id %}
+      <p><strong>Created risk record:</strong> #{{ finding.risk_id }}</p>
+    {% endif %}
+  </div>
+  {% endfor %}
+{% else %}
+  <section class="finding-empty" aria-live="polite">
+    {% set current_status = request.args.get('status', 'Draft') %}
+    {% if current_status == 'Draft' and counts.Draft == 0 %}
+      <h2>No drafts waiting for review</h2>
+      <p>There are currently no pending draft findings in the review queue. New observations from completed Nmap scans can be reviewed here.</p>
+      <p><strong>Next step:</strong> run an authorized lab scan, then open its results to generate draft observations.</p>
+      <a class="link-button" href="/nmap">Open Nmap Scanner</a>
+    {% elif current_status == 'Approved' %}
+      <h2>No approved findings in this view</h2>
+      <p>Approved findings will appear here after review and creation of their linked risk-register entries.</p>
+    {% elif current_status == 'Dismissed' %}
+      <h2>No dismissed findings in this view</h2>
+      <p>Findings dismissed during review will appear here.</p>
+    {% else %}
+      <h2>No findings to display</h2>
+      <p>No findings match this view yet. Complete an authorized lab scan and review its observations.</p>
+    {% endif %}
+  </section>
+{% endif %}
+
+<div class="notice">
+  Open ports are exposure observations, not confirmed vulnerabilities. Suggested ISO controls are prompts for review, not a compliance determination. Web security, threat-intelligence, and custom-rule findings will appear here when those scanners are implemented and return evidence.
+</div>
+
+<script>
+function confirmBulkApproval(event) {
+  const action = event.submitter ? event.submitter.value : "selected";
+  if (action === "all") {
+    return confirm(
+      "Approve ALL pending draft findings and add them to the Risk Register? " +
+      "The selected likelihood and impact will be applied to every pending draft. " +
+      "These are provisional assessments, not confirmed vulnerabilities."
+    );
+  }
+
+  const selected = document.querySelectorAll(
+    '#bulk-approval-form input[name="finding_ids"]:checked'
+  ).length;
+
+  if (selected === 0) {
+    alert("Select at least one draft using the checkboxes first.");
+    return false;
+  }
+
+  return confirm(
+    "Approve " + selected + " selected draft finding(s) and add them to the Risk Register?"
+  );
+}
+</script>
+
+
+<script>
+(function () {
+  const search = document.getElementById("review-target-search");
+  const list = document.getElementById("review-target-list");
+  if (!search || !list) return;
+
+  const options = Array.from(list.querySelectorAll(".review-target-option"));
+
+  search.addEventListener("input", function () {
+    const query = search.value.trim().toLowerCase();
+    options.forEach(function (option) {
+      option.hidden = !option.textContent.toLowerCase().includes(query);
+    });
+  });
+
+  document.getElementById("review-select-visible")?.addEventListener("click", function () {
+    options.forEach(function (option) {
+      if (!option.hidden) {
+        const checkbox = option.querySelector('input[type="checkbox"]');
+        if (checkbox) checkbox.checked = true;
+      }
+    });
+  });
+
+  document.getElementById("review-clear-targets")?.addEventListener("click", function () {
+    options.forEach(function (option) {
+      const checkbox = option.querySelector('input[type="checkbox"]');
+      if (checkbox) checkbox.checked = false;
+    });
+  });
+})();
+</script>
+
+{% endblock %}

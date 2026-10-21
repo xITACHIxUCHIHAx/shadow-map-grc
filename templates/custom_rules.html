@@ -1,0 +1,198 @@
+{% extends "base.html" %}
+
+{% block title %}Custom Rules | Shadow Map GRC{% endblock %}
+
+{% block header %}
+<h1>Custom Rules</h1>
+<p class="subtitle">Evaluate existing findings against simple, configurable keyword rules.</p>
+{% endblock %}
+
+{% block content %}
+<style>
+.rule-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+}
+.rule-grid .full { grid-column: 1 / -1; }
+.rule-grid label { display: block; font-weight: 600; margin-bottom: 6px; }
+.rule-grid input, .rule-grid select, .rule-grid textarea {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    background: white;
+    color: var(--text);
+}
+.rule-grid textarea { min-height: 80px; resize: vertical; }
+.rule-table { width: 100%; border-collapse: collapse; }
+.rule-table th, .rule-table td {
+    padding: 10px;
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+    vertical-align: top;
+    overflow-wrap: anywhere;
+}
+.rule-table th { font-size: 12px; color: var(--muted); }
+.rule-table form { margin: 0; }
+.rule-table button { cursor: pointer; }
+@media (max-width: 700px) {
+    .rule-grid { grid-template-columns: 1fr; }
+    .rule-grid .full { grid-column: auto; }
+    .rule-table { display: block; overflow-x: auto; }
+}
+</style>
+
+<section class="panel">
+    <div class="panel-heading">
+        <h2>Create a rule</h2>
+    </div>
+    <p class="muted">
+        A rule matches a keyword or phrase in an existing finding.
+        Matching is case-insensitive and does not prove a vulnerability.
+    </p>
+    <form method="post">
+        <input type="hidden" name="action" value="create">
+        <div class="rule-grid">
+            <div>
+                <label for="rule-name">Rule name</label>
+                <input id="rule-name" name="name" maxlength="120" required
+                       placeholder="Example: Review exposed admin service">
+            </div>
+            <div>
+                <label for="keyword">Keyword or phrase</label>
+                <input id="keyword" name="keyword" maxlength="200" required
+                       placeholder="Example: admin">
+            </div>
+            <div>
+                <label for="match-field">Finding field</label>
+                <select id="match-field" name="match_field">
+                    <option value="title">Title</option>
+                    <option value="description">Description</option>
+                    <option value="evidence">Evidence</option>
+                </select>
+            </div>
+            <div>
+                <label for="severity">Suggested severity</label>
+                <select id="severity" name="severity">
+                    <option>Review</option>
+                    <option>Low</option>
+                    <option>Medium</option>
+                    <option>High</option>
+                    <option>Critical</option>
+                </select>
+            </div>
+            <div>
+                <label for="iso-control">ISO 27001 control (optional)</label>
+                <input id="iso-control" name="iso_control"
+                       placeholder="Example: A.8.20">
+            </div>
+            <div class="full">
+                <label for="guidance">Review / remediation guidance</label>
+                <textarea id="guidance" name="guidance" maxlength="2000"
+                          placeholder="Explain what the reviewer should verify."></textarea>
+            </div>
+        </div>
+        <p><button class="button" type="submit">Create rule</button></p>
+    </form>
+</section>
+
+<section class="panel">
+    <div class="panel-heading">
+        <h2>Saved rules</h2>
+    </div>
+    {% if rules %}
+    <div style="overflow-x:auto">
+        <table class="rule-table">
+            <thead>
+                <tr>
+                    <th>Rule</th>
+                    <th>Match</th>
+                    <th>Review guidance</th>
+                    <th>Status</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for rule in rules %}
+                <tr>
+                    <td>
+                        <strong>{{ rule.name }}</strong><br>
+                        <span class="muted small">{{ rule.severity }}</span>
+                        {% if rule.iso_control %}
+                        <br><span class="muted small">{{ rule.iso_control }}</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ rule.match_field }} contains <strong>{{ rule.keyword }}</strong></td>
+                    <td>{{ rule.guidance or "No guidance provided." }}</td>
+                    <td>{{ "Enabled" if rule.enabled else "Disabled" }}</td>
+                    <td>
+                        <form method="post">
+                            <input type="hidden" name="action" value="toggle">
+                            <input type="hidden" name="rule_id" value="{{ rule.id }}">
+                            <button class="button" type="submit">
+                                {{ "Disable" if rule.enabled else "Enable" }}
+                            </button>
+                        </form>
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="muted">No custom rules yet. Create your first rule above.</p>
+    {% endif %}
+</section>
+
+<section class="panel">
+    <div class="panel-heading">
+        <h2>Matching findings</h2>
+    </div>
+    <p class="muted">
+        Evaluated {{ finding_count }} saved findings against enabled rules.
+        Matches are read-only and are not new findings.
+    </p>
+    {% if matches %}
+    <div style="overflow-x:auto">
+        <table class="rule-table">
+            <thead>
+                <tr>
+                    <th>Rule</th>
+                    <th>Finding</th>
+                    <th>Target</th>
+                    <th>Finding status</th>
+                    <th>Suggested review</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for item in matches %}
+                <tr>
+                    <td>
+                        <strong>{{ item.rule.name }}</strong><br>
+                        <span class="muted small">{{ item.rule.keyword }}</span>
+                    </td>
+                    <td>
+                        <a href="{{ url_for('combined_findings_page', q=item.finding.title) }}">
+                            #{{ item.finding.id }} — {{ item.finding.title }}
+                        </a>
+                    </td>
+                    <td>{{ item.finding.target }}</td>
+                    <td>{{ item.finding.status }}</td>
+                    <td>
+                        <strong>{{ item.rule.severity }}</strong><br>
+                        {{ item.rule.guidance or "Review the evidence and confirm applicability." }}
+                        {% if item.rule.iso_control %}
+                        <br><span class="muted small">Suggested control: {{ item.rule.iso_control }}</span>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="muted">No matches for currently enabled rules.</p>
+    {% endif %}
+</section>
+{% endblock %}

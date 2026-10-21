@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block title %}Records Management | Shadow Map GRC{% endblock %}
+
+{% block header %}
+<h1>Records Management</h1>
+<p class="subtitle">Delete records for one target or clear the entire application database.</p>
+{% endblock %}
+
+{% block content %}
+<section class="panel">
+    <h2>Database overview</h2>
+    <p class="subtitle">Current record counts in the application database.</p>
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th>Table</th><th>Records</th></tr></thead>
+            <tbody>
+            {% for table, count in counts.items() %}
+                <tr><td>{{ table }}</td><td>{{ count }}</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<section class="panel">
+    <h2>Delete one IP or host</h2>
+    <p class="subtitle">Removes matching scan requests, Nmap results, findings and eligible linked risks/reviews. Custom rules are preserved.</p>
+
+    {% if targets %}
+    <form method="POST" action="{{ url_for('delete_host_records') }}"
+          onsubmit="return confirm('Delete the selected target records? A database backup will be created first.');">
+        <label class="form-label" for="target">Select target</label>
+        <select id="target" name="target" required>
+            {% for target in targets %}
+            <option value="{{ target }}">{{ target }}</option>
+            {% endfor %}
+        </select>
+
+        <button class="button" type="submit">Delete Target Records</button>
+    </form>
+    {% else %}
+    <p>No target records are currently stored.</p>
+    {% endif %}
+</section>
+
+<section class="panel">
+    <h2>Delete everything from the database</h2>
+    <p><strong>Warning:</strong> This clears every record from all application tables, including custom rules, findings, risks, scan history, and ISO control reviews. It resets record IDs. It does not remove the tables, application code, or configuration files.</p>
+    <p>A timestamped SQLite backup is created before deletion. The backup contains the records you are clearing, so protect it appropriately.</p>
+
+    <form method="POST" action="{{ url_for('delete_all_database_records') }}"
+          onsubmit="return confirm('FINAL WARNING: This will clear ALL records from every application table. Continue?');">
+        <label class="form-label" for="confirm_all">Type DELETE ALL to confirm</label>
+        <input id="confirm_all" name="confirm_all" required
+               pattern="DELETE ALL" placeholder="DELETE ALL"
+               autocomplete="off">
+        <button class="button" type="submit">Delete Everything</button>
+    </form>
+</section>
+{% endblock %}

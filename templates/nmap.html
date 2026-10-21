@@ -1,0 +1,210 @@
+{% extends "base.html" %}
+
+{% block title %}Nmap | Shadow Map GRC{% endblock %}
+
+{% block header %}
+<h1>Nmap Scanner</h1>
+<p class="subtitle">Discover TCP port states and identify advertised services on authorized targets.</p>
+{% endblock %}
+
+{% block content %}
+<section class="panel">
+    <div class="panel-heading">
+        <div>
+            <h2>Start a network scan</h2>
+            <p class="subtitle">Scan all TCP ports, with optional service and version detection.</p>
+        </div>
+    </div>
+
+    <form action="{{ url_for('start_nmap_scan') }}" method="post">
+        <label class="form-label" for="target">Target IP address or hostname</label>
+        <input
+            type="text"
+            id="target"
+            name="target"
+            placeholder="Example: 192.168.1.10 or lab.example.com"
+            maxlength="253"
+            required
+        >
+
+        <label class="form-label" for="scan_profile">Scan profile</label>
+        <select id="scan_profile" name="scan_profile">
+            <option value="all_ports">All TCP ports</option>
+            <option value="service_detection">All TCP ports + service/version detection</option>
+        </select>
+
+        <label class="module" style="margin: 16px 0;">
+            <input type="checkbox" name="authorized" value="yes" required>
+            <div>
+                <strong>Authorized target confirmation</strong>
+                <span>I own this system or have explicit permission to scan it.</span>
+            </div>
+        </label>
+
+        <button class="button" type="submit">Run Nmap Scan</button>
+    </form>
+
+    <div class="notice">
+        <strong>Scan profile:</strong> scans TCP ports 1–65535 with no DNS resolution and a maximum runtime of 180 seconds. Service/version detection runs only when selected. This is not a vulnerability scan.
+        Scans may still generate network traffic and be logged by the target.
+    </div>
+</section>
+
+{% if result %}
+<section class="panel">
+    <div class="panel-heading">
+        <div>
+            <h2>Scan result #{{ result.id }}</h2>
+            <p class="subtitle">Target: <strong>{{ result.target }}</strong></p>
+        </div>
+        <span class="status">{{ result.status }}</span>
+    </div>
+
+    <div class="section-description">
+        <strong>Started:</strong> {{ result.started_at }} UTC<br>
+        <strong>Finished:</strong> {{ result.finished_at or "Not available" }}<br>
+        <strong>Host state:</strong> {{ result.host_state or "Unknown" }}<br>
+        <strong>Duration:</strong>
+        {% if result.duration_seconds is not none %}
+            {{ result.duration_seconds }} seconds
+        {% else %}
+            Not available
+        {% endif %}
+    </div>
+
+    {% if result.error %}
+    <div class="notice">
+        <strong>Scan error:</strong> {{ result.error }}
+    </div>
+    {% endif %}
+
+    {% if result.status == "Completed" %}
+    <div class="module-grid">
+        <div class="module">
+            <div>
+                <strong>Open</strong>
+                <span>{{ counts.open }} ports</span>
+            </div>
+        </div>
+        <div class="module">
+            <div>
+                <strong>Closed</strong>
+                <span>{{ counts.closed }} ports</span>
+            </div>
+        </div>
+        <div class="module">
+            <div>
+                <strong>Filtered</strong>
+                <span>{{ counts.filtered }} ports</span>
+            </div>
+        </div>
+        <div class="module">
+            <div>
+                <strong>Other states</strong>
+                <span>{{ counts.other }} ports</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="panel-heading">
+        <h2>Port details</h2>
+        <span class="muted small">{{ ports|length }} entries returned</span>
+    </div>
+
+    {% if ports %}
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Port</th>
+                    <th>Protocol</th>
+                    <th>State</th>
+                    <th>Service</th>
+                    <th>Product / Version</th>
+                    <th>Reason</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for port in ports %}
+                <tr>
+                    <td>{{ port.port }}</td>
+                    <td>{{ port.protocol }}</td>
+                    <td><span class="status">{{ port.state }}</span></td>
+                    <td>{{ port.service or "Unknown" }}</td>
+                    <td>
+                        {{ port.product or "" }}
+                        {% if port.version %} {{ port.version }}{% endif %}
+                        {% if port.extra_info %}<br><span class="muted small">{{ port.extra_info }}</span>{% endif %}
+                        {% if not port.product and not port.version and not port.extra_info %}—{% endif %}
+                    </td>
+                    <td>{{ port.reason or "—" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty">
+        Nmap returned no individual port entries for this scan.
+        This does not prove that the target has no open ports.
+    </div>
+    {% endif %}
+
+    <div class="notice">
+        <strong>Interpretation:</strong> An open port is an exposed network service,
+        not automatically a vulnerability. A filtered port means Nmap could not
+        determine the port state reliably. Service versions may be missing or inaccurate.
+    </div>
+    {% endif %}
+</section>
+{% endif %}
+
+<section class="panel">
+    <div class="panel-heading">
+        <h2>Recent Nmap scans</h2>
+        <span class="muted small">{{ recent_scans|length }} shown</span>
+    </div>
+
+    {% if recent_scans %}
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Target</th>
+                    <th>Status</th>
+                    <th>Host</th>
+                    <th>Started (UTC)</th>
+                    <th>Duration</th>
+                    <th>Details</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for scan in recent_scans %}
+                <tr>
+                    <td>#{{ scan.id }}</td>
+                    <td>{{ scan.target }}</td>
+                    <td><span class="status">{{ scan.status }}</span></td>
+                    <td>{{ scan.host_state or "—" }}</td>
+                    <td>{{ scan.started_at }}</td>
+                    <td>
+                        {% if scan.duration_seconds is not none %}
+                            {{ scan.duration_seconds }} s
+                        {% else %}
+                            —
+                        {% endif %}
+                    </td>
+                    <td><a href="{{ url_for('nmap_results', scan_id=scan.id) }}">View</a></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty">
+        <strong>No Nmap scans yet</strong>
+        <p>Submit a scan above to see real results here.</p>
+    </div>
+    {% endif %}
+</section>
+{% endblock %}

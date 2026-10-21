@@ -1,0 +1,268 @@
+{% extends "base.html" %}
+{% block title %}Traceability | Shadow Map GRC{% endblock %}
+{% block header %}
+<h1>Traceability Overview</h1>
+<p class="subtitle">Review links between findings, risk records, and recorded ISO control mappings.</p>
+{% endblock %}
+{% block content %}
+<style>
+.trace-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-bottom:22px}
+.trace-card,.trace-panel{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:18px;margin-bottom:18px}
+.trace-label{font-size:11px;color:var(--muted);font-weight:700;letter-spacing:.5px}
+.trace-number{font-size:27px;font-weight:750;margin-top:8px}
+.trace-table-wrap{overflow-x:auto}
+.trace-table{width:100%;border-collapse:collapse;font-size:13px}
+.trace-table th,.trace-table td{text-align:left;vertical-align:top;padding:10px;border-bottom:1px solid var(--border);overflow-wrap:anywhere}
+.trace-table th{background:#f7f9fc}
+.trace-note{padding:12px;background:#f7f9fc;border:1px solid var(--border);border-radius:8px;line-height:1.6;margin:10px 0 16px}
+.trace-ok{color:#166534;font-weight:700}
+.trace-filters{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+.trace-filters label{display:flex;flex-direction:column;gap:7px;font-size:13px;font-weight:600}
+.trace-filters select{width:100%;min-width:0;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:inherit}
+.trace-actions{display:flex;gap:14px;align-items:center;margin-top:16px}
+.trace-reset{padding:8px 0}
+@media(max-width:760px){.trace-filters{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:480px){.trace-filters{grid-template-columns:1fr}}
+
+.trace-warn{color:#92400e;font-weight:700}
+@media(max-width:760px){.trace-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:480px){.trace-grid{grid-template-columns:1fr}}
+</style>
+
+<div class="trace-panel">
+  <h2>Filter traceability records</h2>
+  <form method="get" action="{{ url_for('traceability_page') }}">
+    <div class="trace-filters">
+      <label>Target / Asset
+        <select name="target">
+          <option value="All" {% if target_filter == 'All' %}selected{% endif %}>All targets</option>
+          {% for target in target_options %}
+          <option value="{{ target }}" {% if target_filter == target %}selected{% endif %}>{{ target }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Finding status
+        <select name="status">
+          {% for value in ['All', 'Draft', 'Approved', 'Dismissed'] %}
+          <option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ value }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Finding ISO mapping
+        <select name="mapping">
+          {% for value in ['All', 'Mapped', 'Not mapped'] %}
+          <option value="{{ value }}" {% if mapping_filter == value %}selected{% endif %}>{{ value }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Finding-to-risk link
+        <select name="link">
+          {% for value in ['All', 'Linked', 'Unlinked'] %}
+          <option value="{{ value }}" {% if link_filter == value %}selected{% endif %}>{{ value }}</option>
+          {% endfor %}
+        </select>
+      </label>
+    </div>
+    <div class="trace-actions">
+      <button type="submit">Apply filters</button>
+      <a class="trace-reset" href="{{ url_for('traceability_page') }}">Clear filters</a>
+    </div>
+  </form>
+  <p class="subtitle">Finding filters affect the finding-to-risk table and its summary. Risk mapping and unlinked-risk tables also respect the selected target.</p>
+</div>
+
+<div class="trace-grid">
+  <div class="trace-card"><div class="trace-label">TOTAL FINDINGS</div><div class="trace-number">{{ summary.findings }}</div><a href="{{ url_for('automatic_risks.findings_page', status='All') }}">Review findings</a></div>
+  <div class="trace-card"><div class="trace-label">TOTAL RISKS</div><div class="trace-number">{{ summary.risks }}</div><a href="{{ url_for('risk_register_page') }}">Open Risk Register</a></div>
+  <div class="trace-card"><div class="trace-label">FINDINGS WITHOUT VALID RISK LINK</div><div class="trace-number">{{ summary.findings_without_risk }}</div></div>
+  <div class="trace-card"><div class="trace-label">RISKS WITHOUT LINKED FINDINGS</div><div class="trace-number">{{ summary.risks_without_findings }}</div></div>
+  <div class="trace-card"><div class="trace-label">FINDINGS WITHOUT ISO MAPPING</div><div class="trace-number">{{ summary.findings_without_controls }}</div></div>
+  <div class="trace-card"><div class="trace-label">RISKS WITHOUT ISO MAPPING</div><div class="trace-number">{{ summary.risks_without_controls }}</div></div>
+</div>
+
+<div class="trace-panel">
+  <h2>How to interpret this page</h2>
+  <div class="trace-note">
+    <strong>Important:</strong> “No ISO mapping” means no control mapping is recorded in this application.
+    It does not prove that a control is absent or ineffective. Review each mapping against the organization's
+    scope, evidence, and Statement of Applicability before making a compliance claim.
+  </div>
+  {% if broken_links %}
+    <p class="trace-warn">Broken finding-to-risk references require review.</p>
+  {% else %}
+    <p class="trace-ok">No broken finding-to-risk references found.</p>
+  {% endif %}
+</div>
+
+<div class="trace-panel">
+  <h2>Finding-to-risk links</h2>
+  <p class="subtitle">Each finding is shown with its linked risk, if one is recorded.</p>
+  <div class="trace-table-wrap">
+    <table class="trace-table">
+      <thead><tr><th>Finding</th><th>Target</th><th>Finding status</th><th>Linked risk</th><th>Recorded ISO mappings</th></tr></thead>
+      <tbody>
+      {% for item in finding_links %}
+        <tr>
+          <td><a href="{{ url_for('automatic_risks.findings_page', status='All') }}#finding-{{ item.finding_id }}">#{{ item.finding_id }} · {{ item.finding_title }}</a></td>
+          <td>{{ item.target or 'Not specified' }}</td>
+          <td>{{ item.finding_status or 'Unknown' }}</td>
+          <td>
+            {% if item.risk_id and item.risk_title %}
+              <a href="{{ url_for('risk_register_page', edit=item.risk_id) }}">#{{ item.risk_id }} · {{ item.risk_title }}</a>
+              <div>{{ item.risk_status or 'Unknown' }}</div>
+            {% elif item.risk_id %}
+              <span class="trace-warn">Broken reference: #{{ item.risk_id }}</span>
+            {% else %}
+              <span class="trace-warn">No risk linked</span>
+            {% endif %}
+          </td>
+          <td><strong>Finding:</strong> {{ item.finding_controls or 'Not mapped' }}<br><strong>Risk:</strong> {{ item.risk_controls or 'Not mapped' }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="5">No findings are recorded.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="trace-panel">
+  <h2>Findings without ISO control mappings</h2>
+  <div class="trace-table-wrap">
+    <table class="trace-table">
+      <thead><tr><th>Finding</th><th>Target</th><th>Status</th><th>Linked risk</th></tr></thead>
+      <tbody>
+      {% for item in findings_missing_controls %}
+        <tr>
+          <td><a href="{{ url_for('automatic_risks.findings_page', status='All') }}#finding-{{ item.id }}">#{{ item.id }} · {{ item.title }}</a></td>
+          <td>{{ item.target or 'Not specified' }}</td>
+          <td>{{ item.status or 'Unknown' }}</td>
+          <td>{% if item.risk_id %}<a href="{{ url_for('risk_register_page', edit=item.risk_id) }}">Risk #{{ item.risk_id }}</a>{% else %}Not linked{% endif %}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="4">All findings have a recorded ISO mapping.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="trace-panel">
+  <h2>Risks without ISO control mappings</h2>
+  <div class="trace-table-wrap">
+    <table class="trace-table">
+      <thead><tr><th>Risk</th><th>Asset</th><th>Status</th><th>Owner</th></tr></thead>
+      <tbody>
+      {% for item in risks_missing_controls %}
+        <tr>
+          <td><a href="{{ url_for('risk_register_page', edit=item.id) }}">#{{ item.id }} · {{ item.title }}</a></td>
+          <td>{{ item.asset or 'Not specified' }}</td>
+          <td>{{ item.status or 'Unknown' }}</td>
+          <td>{{ item.owner or 'Unassigned' }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="4">All risks have a recorded ISO mapping.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% if risks_without_findings %}
+<div class="trace-panel">
+  <h2>Risks without linked findings</h2>
+  <div class="trace-table-wrap">
+    <table class="trace-table">
+      <thead><tr><th>Risk</th><th>Asset</th><th>Status</th></tr></thead>
+      <tbody>
+      {% for item in risks_without_findings %}
+        <tr>
+          <td><a href="{{ url_for('risk_register_page', edit=item.id) }}">#{{ item.id }} · {{ item.title }}</a></td>
+          <td>{{ item.asset or 'Not specified' }}</td>
+          <td>{{ item.status or 'Unknown' }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<div class="trace-panel" id="iso-control-reviews">
+  <h2>ISO control mapping review</h2>
+  <p>
+    These are proposed mappings, not proof of compliance or control effectiveness.
+    Validate each mapping against evidence, scope, and the applicable Statement
+    of Applicability. Approved means the mapping was reviewed.
+  </p>
+  <div class="trace-table-wrap">
+    <table class="trace-table">
+      <thead>
+        <tr>
+          <th>Record</th>
+          <th>Control</th>
+          <th>Review status</th>
+          <th>Rationale</th>
+          <th>Reviewer</th>
+          <th>Save review</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for item in control_reviews %}
+        <tr>
+          <td>
+            {% if item.record_type == 'finding' %}
+              <a href="{{ url_for('combined_findings_page') }}">
+                Finding #{{ item.record_id }} · {{ item.source_title }}
+              </a>
+            {% else %}
+              <a href="{{ url_for('risk_register_page', edit=item.record_id) }}">
+                Risk #{{ item.record_id }} · {{ item.source_title }}
+              </a>
+            {% endif %}
+            <div>{{ item.source_asset }}</div>
+          </td>
+          <td><strong>{{ item.control_code }}</strong></td>
+          <td>
+            <form method="post"
+                  action="{{ url_for('save_iso_control_review') }}"
+                  id="iso-review-{{ item.id }}">
+              <input type="hidden" name="record_type" value="{{ item.record_type }}">
+              <input type="hidden" name="record_id" value="{{ item.record_id }}">
+              <input type="hidden" name="control_code" value="{{ item.control_code }}">
+              <select name="review_status" aria-label="Review status">
+                {% for state in ['Suggested', 'Reviewed', 'Approved', 'Rejected'] %}
+                <option value="{{ state }}"
+                  {% if item.review_status == state %}selected{% endif %}>
+                  {{ state }}
+                </option>
+                {% endfor %}
+              </select>
+          </td>
+          <td>
+              <textarea name="rationale" rows="3" maxlength="2000"
+                        required aria-label="Review rationale">{{ item.rationale }}</textarea>
+          </td>
+          <td>
+              <input type="text" name="reviewed_by" maxlength="100"
+                     value="{{ item.reviewed_by }}"
+                     placeholder="Reviewer name"
+                     aria-label="Reviewer name">
+              {% if item.reviewed_at %}
+                <small>Reviewed: {{ item.reviewed_at }}</small>
+              {% endif %}
+          </td>
+          <td>
+              <button type="submit">Save review</button>
+            </form>
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="6">No ISO control mappings are available to review yet.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endblock %}

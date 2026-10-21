@@ -1,0 +1,194 @@
+{% extends "base.html" %}
+
+{% block title %}Combined Findings | Shadow Map GRC{% endblock %}
+
+{% block header %}
+<h1>Combined Findings</h1>
+<p class="subtitle">A unified view of saved security observations from available scanners.</p>
+{% endblock %}
+
+{% block content %}
+<style>
+.cf-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:18px}
+.cf-stat,.cf-card{background:white;border:1px solid var(--border);border-radius:12px;padding:16px}
+.cf-number{font-size:25px;font-weight:750;margin-top:6px}
+.cf-muted{font-size:12px;color:var(--muted)}
+.cf-filters{display:flex;flex-wrap:wrap;align-items:end;gap:12px}
+.cf-filters label{display:block;font-size:12px;font-weight:650;margin-bottom:5px}
+.cf-filters select{padding:9px;border:1px solid var(--border);border-radius:7px;background:white}
+.cf-card{margin-bottom:14px}
+.cf-card h2{font-size:18px;line-height:1.5;margin:9px 0}
+.cf-evidence{background:#f7f9fc;border-radius:8px;padding:12px;overflow-wrap:anywhere;white-space:pre-wrap;line-height:1.6;font-size:12px}
+.cf-status{display:inline-block;padding:3px 8px;border-radius:999px;background:#f1f5f9;color:#334155;font-size:11px;font-weight:700}
+.cf-empty{padding:22px;border:1px dashed var(--border);border-radius:12px;background:white}
+.cf-links{display:flex;flex-wrap:wrap;gap:12px;margin-top:12px}
+.cf-target-picker{min-width:260px;max-width:460px;flex:1 1 280px}
+.cf-target-actions{display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin:8px 0}
+.cf-target-actions button{padding:6px 9px;font-size:12px}
+.cf-target-list{max-height:210px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:8px;background:white;min-width:0}
+.cf-target-option{display:flex!important;align-items:flex-start;gap:8px;padding:7px 4px;margin:0!important;font-size:13px!important;font-weight:400!important;overflow-wrap:anywhere;cursor:pointer}
+.cf-target-option input{margin-top:3px;flex-shrink:0}
+.cf-target-option span{flex:1;min-width:0;overflow-wrap:anywhere}
+
+@media(max-width:700px){.cf-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:420px){.cf-stats{grid-template-columns:1fr}}
+</style>
+
+<div class="cf-stats">
+  <div class="cf-stat">
+    <div class="cf-muted">ALL OBSERVATIONS</div>
+    <div class="cf-number">{{ total_count }}</div>
+  </div>
+  <div class="cf-stat">
+    <div class="cf-muted">NMAP</div>
+    <div class="cf-number">{{ source_counts.get('nmap', 0) }}</div>
+  </div>
+  <div class="cf-stat">
+    <div class="cf-muted">WEB SECURITY</div>
+    <div class="cf-number">{{ source_counts.get('web_security', 0) }}</div>
+  </div>
+  <div class="cf-stat">
+    <div class="cf-muted">DRAFTS TO REVIEW</div>
+    <div class="cf-number">{{ status_counts.get('Draft', 0) }}</div>
+  </div>
+</div>
+
+<section class="panel">
+  <div class="panel-heading">
+    <div>
+      <h2>Filter observations</h2>
+      <p class="subtitle">Filters change the displayed list, not the stored records.</p>
+    </div>
+  </div>
+  <form method="get" action="{{ url_for('combined_findings_page') }}" class="cf-filters">
+    <div>
+      <label for="cf-search">Search target or finding title</label>
+      <input id="cf-search" name="q" type="search"
+             value="{{ search_query }}"
+             placeholder="e.g. example.com or missing header"
+             maxlength="200"
+             style="padding:9px;border:1px solid var(--border);border-radius:7px;min-width:230px;">
+    </div>
+    <div class="cf-target-picker">
+      <label for="cf-target-search">Choose saved hosts / IPs</label>
+      <input id="cf-target-search" type="search"
+             placeholder="Search saved targets..."
+             autocomplete="off"
+             style="padding:9px;border:1px solid var(--border);border-radius:7px;width:100%;box-sizing:border-box;">
+      <div class="cf-target-actions">
+        <button class="button" type="button" id="cf-select-visible">Select visible</button>
+        <button class="link-button" type="button" id="cf-clear-targets">Clear selection</button>
+        <span class="cf-muted">{{ available_targets|length }} saved target(s)</span>
+      </div>
+      <div class="cf-target-list" id="cf-target-list">
+        {% for target in available_targets %}
+          <label class="cf-target-option" data-target="{{ target|lower }}">
+            <input type="checkbox" name="host" value="{{ target }}"
+                   {% if target in selected_hosts %}checked{% endif %}>
+            <span>{{ target }}</span>
+          </label>
+        {% else %}
+          <p class="cf-muted">No saved targets found yet. Complete a scan first.</p>
+        {% endfor %}
+      </div>
+      <p class="cf-muted">Select one or more targets. Leave all unchecked to show all targets.</p>
+    </div>
+    <div>
+      <label for="cf-source">Scanner source</label>
+      <select id="cf-source" name="source">
+        <option value="all" {% if selected_source == 'all' %}selected{% endif %}>All sources</option>
+        <option value="nmap" {% if selected_source == 'nmap' %}selected{% endif %}>Nmap</option>
+        <option value="web_security" {% if selected_source == 'web_security' %}selected{% endif %}>Web Security</option>
+      </select>
+    </div>
+    <div>
+      <label for="cf-status">Review status</label>
+      <select id="cf-status" name="status">
+        <option value="all" {% if selected_status == 'all' %}selected{% endif %}>All statuses</option>
+        <option value="Draft" {% if selected_status == 'Draft' %}selected{% endif %}>Draft ({{ status_counts.get('Draft', 0) }})</option>
+        <option value="Approved" {% if selected_status == 'Approved' %}selected{% endif %}>Approved ({{ status_counts.get('Approved', 0) }})</option>
+        <option value="Dismissed" {% if selected_status == 'Dismissed' %}selected{% endif %}>Dismissed ({{ status_counts.get('Dismissed', 0) }})</option>
+      </select>
+    </div>
+    <button class="button" type="submit">Apply filters</button>
+    <a class="link-button" href="{{ url_for('combined_findings_page') }}">Clear filters</a>
+  </form>
+</section>
+
+<p class="cf-muted">Showing {{ findings|length }} matching observation(s). Approved means accepted into the review workflow; it does not prove a vulnerability or establish ISO compliance.</p>
+
+{% if findings %}
+  {% for finding in findings %}
+  <article class="cf-card">
+    <div class="cf-muted">
+      #{{ finding.id }} · {{ finding.source|upper }} · {{ finding.target or 'Target not recorded' }} · {{ finding.created_at }}
+      · <span class="cf-status">{{ finding.status }}</span>
+    </div>
+    <h2>{{ finding.title }}</h2>
+    <p style="line-height:1.7;">{{ finding.description }}</p>
+    <p>
+      <strong>Suggested severity:</strong> {{ finding.suggested_severity or 'Not assessed' }}
+      &nbsp; <strong>Confidence:</strong> {{ finding.confidence or 'Not assessed' }}
+    </p>
+    <p><strong>Recommended next step:</strong> {{ finding.recommendation or 'Manual review required.' }}</p>
+    <p><strong>ISO control suggestions:</strong> {{ finding.iso_controls or 'Not mapped' }}</p>
+    <div class="cf-evidence"><strong>Evidence</strong>
+{{ finding.evidence or 'No evidence recorded.' }}</div>
+    {% if finding.risk_id %}
+      <p><strong>Linked risk-register record:</strong> #{{ finding.risk_id }}</p>
+    {% endif %}
+    <div class="cf-links">
+      <a href="{{ url_for('automatic_risks.findings_page', status=finding.status) }}#finding-{{ finding.id }}">Open in Findings Review</a>
+      {% if finding.status == 'Approved' %}
+        <a href="{{ url_for('risk_register_page') }}">Open Risk Register</a>
+      {% endif %}
+    </div>
+  </article>
+  {% endfor %}
+{% else %}
+  <section class="cf-empty">
+    <h2>No observations match these filters</h2>
+    <p>Try selecting another source or status. Changing filters does not delete any observations.</p>
+  </section>
+{% endif %}
+
+<div class="notice">
+  Nmap open ports and missing HTTP security headers are observations, not confirmed vulnerabilities. Review evidence, business context, and applicability before making risk or compliance decisions.
+</div>
+
+<script>
+(() => {
+  const search = document.getElementById("cf-target-search");
+  const list = document.getElementById("cf-target-list");
+  const selectVisible = document.getElementById("cf-select-visible");
+  const clearTargets = document.getElementById("cf-clear-targets");
+  if (!search || !list || !selectVisible || !clearTargets) return;
+
+  const options = Array.from(list.querySelectorAll(".cf-target-option"));
+
+  search.addEventListener("input", () => {
+    const query = search.value.trim().toLowerCase();
+    options.forEach(option => {
+      option.hidden = !option.dataset.target.includes(query);
+    });
+  });
+
+  selectVisible.addEventListener("click", () => {
+    options.forEach(option => {
+      if (!option.hidden) {
+        const checkbox = option.querySelector('input[type="checkbox"]');
+        if (checkbox) checkbox.checked = true;
+      }
+    });
+  });
+
+  clearTargets.addEventListener("click", () => {
+    options.forEach(option => {
+      const checkbox = option.querySelector('input[type="checkbox"]');
+      if (checkbox) checkbox.checked = false;
+    });
+  });
+})();
+</script>
+
+{% endblock %}

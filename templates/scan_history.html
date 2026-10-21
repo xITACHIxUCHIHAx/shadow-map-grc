@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+
+{% block title %}Scan History | Shadow Map GRC{% endblock %}
+
+{% block header %}
+<h1>Scan History</h1>
+<p class="subtitle">Review each Nmap run independently and open its findings.</p>
+{% endblock %}
+
+{% block content %}
+<style>
+    .history-note {
+        padding: 14px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        margin-bottom: 18px;
+        line-height: 1.6;
+    }
+    .history-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+    }
+    .history-button {
+        display: inline-block;
+        padding: 8px 11px;
+        border: 1px solid var(--border);
+        border-radius: 7px;
+        color: var(--accent);
+        text-decoration: none;
+        font-size: 12px;
+        font-weight: 650;
+        white-space: nowrap;
+    }
+    .history-target { overflow-wrap: anywhere; }
+</style>
+
+<div class="history-note">
+    <strong>Scan separation:</strong>
+    each Nmap run has its own scan ID. Use View Findings to see only the
+    observations generated from that particular run. An open port is an
+    observation and does not automatically prove a vulnerability.
+</div>
+
+<section class="panel">
+    <div class="panel-heading">
+        <div>
+            <h2>Nmap scans</h2>
+            <p class="subtitle">Actual Nmap executions recorded in the database.</p>
+        </div>
+        <a class="history-button" href="{{ url_for('nmap_page') }}">New Nmap scan</a>
+    </div>
+
+    {% if nmap_scans %}
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Scan</th>
+                    <th>Target / host</th>
+                    <th>Started (UTC)</th>
+                    <th>Status</th>
+                    <th>Open ports</th>
+                    <th>Findings</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for scan in nmap_scans %}
+                <tr>
+                    <td>#{{ scan.id }}</td>
+                    <td class="history-target">{{ scan.target }}</td>
+                    <td>{{ scan.started_at or 'Not recorded' }}</td>
+                    <td><span class="status">{{ scan.status }}</span></td>
+                    <td>{{ scan.open_ports }}</td>
+                    <td>
+                        {{ scan.finding_count }}
+                        <div class="muted small">
+                            {{ scan.approved_count }} approved
+                        </div>
+                    </td>
+                    <td>
+                        <div class="history-actions">
+                            <a class="history-button"
+                               href="{{ url_for('scan_history_detail', scan_id=scan.id) }}">
+                                View Findings
+                            </a>
+                            <a class="history-button"
+                               href="{{ url_for('nmap_results', scan_id=scan.id) }}">
+                                Nmap Results
+                            </a>
+                            <form method="POST"
+                                  action="{{ url_for('delete_nmap_scan', scan_id=scan.id) }}"
+                                  onsubmit="return confirm('Delete scan #{{ scan.id }} and its Nmap results? Approved risks will be preserved.');">
+                                <button class="history-button" type="submit"
+                                        style="color: var(--danger, #b91c1c); cursor: pointer;">
+                                    Delete Scan
+                                </button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty">
+        <strong>No Nmap scans recorded yet.</strong>
+        <p>Run a scan from the Nmap page and return here to review it.</p>
+    </div>
+    {% endif %}
+</section>
+
+{% endblock %}

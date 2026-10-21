@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+
+{% block title %}Threat Intelligence | Shadow Map GRC{% endblock %}
+
+{% block header %}
+<h1>Threat Intelligence</h1>
+<p class="subtitle">Read-only public IP context from Shodan InternetDB.</p>
+{% endblock %}
+
+{% block content %}
+<section class="panel">
+    <div class="panel-heading">
+        <div>
+            <h2>Look up a public IPv4 address</h2>
+            <p class="subtitle">
+                View publicly reported ports, hostnames, tags, and vulnerability identifiers.
+            </p>
+        </div>
+    </div>
+
+    <form method="post" action="{{ url_for('threat_intel_page') }}">
+        <label class="form-label" for="target">Public IPv4 address</label>
+        <input
+            type="text"
+            id="target"
+            name="target"
+            value="{{ target }}"
+            maxlength="45"
+            placeholder="Example: 8.8.8.8"
+            required
+        >
+
+        <label class="module" style="margin: 16px 0;">
+            <input type="checkbox" name="authorized" value="yes" required>
+            <div>
+                <strong>Authorized lookup confirmation</strong>
+                <span>I am authorized to investigate this IP address.</span>
+            </div>
+        </label>
+
+        <button class="button" type="submit">Look Up IP</button>
+    </form>
+
+    <div class="notice">
+        <strong>Scope:</strong> This sends the submitted public IP to Shodan InternetDB.
+        Results are external intelligence, may be incomplete or stale, and do not
+        confirm a vulnerability. No local findings or risks are created or changed.
+    </div>
+</section>
+
+{% if error %}
+<section class="panel">
+    <div class="notice"><strong>Lookup not completed:</strong> {{ error }}</div>
+</section>
+{% endif %}
+
+{% if result %}
+<section class="panel">
+    <div class="panel-heading">
+        <div>
+            <h2>Lookup results</h2>
+            <p class="subtitle">IP: {{ result.ip }}</p>
+        </div>
+        <span class="status">
+            {{ "Data returned" if result.found else "No InternetDB record found" }}
+        </span>
+    </div>
+
+    {% if result.found %}
+    <div class="module-grid">
+        <div class="module">
+            <div><strong>Reported ports</strong><span>{{ result.ports|length }}</span></div>
+        </div>
+        <div class="module">
+            <div><strong>Hostnames</strong><span>{{ result.hostnames|length }}</span></div>
+        </div>
+        <div class="module">
+            <div><strong>Tags</strong><span>{{ result.tags|length }}</span></div>
+        </div>
+        <div class="module">
+            <div><strong>Vulnerability IDs</strong><span>{{ result.vulns|length }}</span></div>
+        </div>
+    </div>
+
+    <h2>Reported ports</h2>
+    {% if result.ports %}
+    <ul>{% for item in result.ports %}<li>{{ item }}</li>{% endfor %}</ul>
+    {% else %}<p class="muted">No ports reported.</p>{% endif %}
+
+    <h2>Hostnames</h2>
+    {% if result.hostnames %}
+    <ul>{% for item in result.hostnames %}<li>{{ item }}</li>{% endfor %}</ul>
+    {% else %}<p class="muted">No hostnames reported.</p>{% endif %}
+
+    <h2>Tags</h2>
+    {% if result.tags %}
+    <ul>{% for item in result.tags %}<li>{{ item }}</li>{% endfor %}</ul>
+    {% else %}<p class="muted">No tags reported.</p>{% endif %}
+
+    <h2>Reported vulnerability identifiers</h2>
+    {% if result.vulns %}
+    <ul>{% for item in result.vulns %}<li>{{ item }}</li>{% endfor %}</ul>
+    <p class="muted">
+        Verify each identifier against authoritative advisories and the asset's
+        actual software/version before recording a risk.
+    </p>
+    {% else %}<p class="muted">No vulnerability identifiers reported.</p>{% endif %}
+    {% endif %}
+</section>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard | Shadow Map GRC{% endblock %}
+
+{% block header %}
+<h1>Dashboard</h1>
+<p class="subtitle">Security scan activity, findings and risk overview.</p>
+{% endblock %}
+
+{% block content %}
+<section class="metric-grid" aria-label="Project summary">
+    <article class="metric-card">
+        <span class="metric-label">Nmap scans</span>
+        <strong class="metric-value">{{ stats.nmap_total }}</strong>
+        <span class="metric-note">{{ stats.nmap_completed }} completed</span>
+    </article>
+    <article class="metric-card">
+        <span class="metric-label">Findings recorded</span>
+        <strong class="metric-value">{{ stats.findings_total }}</strong>
+        <span class="metric-note">{{ stats.findings_approved }} approved</span>
+    </article>
+    <article class="metric-card">
+        <span class="metric-label">Pending review</span>
+        <strong class="metric-value">{{ stats.findings_pending }}</strong>
+        <span class="metric-note">Findings awaiting a decision</span>
+    </article>
+    <article class="metric-card">
+        <span class="metric-label">Open risks</span>
+        <strong class="metric-value">{{ stats.risks_open }}</strong>
+        <span class="metric-note">{{ stats.risks_total }} total risk assessments</span>
+    </article>
+</section>
+
+<section class="panel" aria-label="Risk treatment follow-up">
+    <div class="panel-heading">
+        <div>
+            <h2>Risk-treatment follow-up</h2>
+            <p class="subtitle">Track missing deadlines and treatment progress for recorded risks.</p>
+        </div>
+        <a href="{{ url_for('risk_register_page') }}">Open Risk Register →</a>
+    </div>
+    <section class="metric-grid" aria-label="Risk treatment metrics">
+        <article class="metric-card">
+            <span class="metric-label">Missing due dates</span>
+            <strong class="metric-value">{{ stats.risks_missing_due_date }}</strong>
+            <span class="metric-note">Risks needing a planned deadline</span>
+        </article>
+        <article class="metric-card">
+            <span class="metric-label">Overdue risks</span>
+            <strong class="metric-value">{{ stats.risks_overdue }}</strong>
+            <span class="metric-note">Past due and not marked remediated</span>
+        </article>
+        <article class="metric-card">
+            <span class="metric-label">In progress</span>
+            <strong class="metric-value">{{ stats.risks_in_progress }}</strong>
+            <span class="metric-note">Treatment work in progress</span>
+        </article>
+        <article class="metric-card">
+            <span class="metric-label">Remediated</span>
+            <strong class="metric-value">{{ stats.risks_remediated }}</strong>
+            <span class="metric-note">Marked as remediated</span>
+        </article>
+    </section>
+</section>
+
+<section class="panel">
+    <div class="panel-heading">
+        <div>
+            <h2>New scan request</h2>
+            <p class="subtitle">Save a target request or open the Nmap page to run a scan.</p>
+        </div>
+        <a href="{{ url_for('nmap_page') }}">Open Nmap →</a>
+    </div>
+
+    <form action="{{ url_for('create_scan') }}" method="post">
+        <label class="form-label" for="target">Target</label>
+        <input type="text" id="target" name="target"
+               placeholder="Authorized domain or IP address" required>
+
+        <label class="form-label">Scan modules</label>
+        <div class="module-grid">
+            <label class="module">
+                <input type="checkbox" name="scanners" value="nmap">
+                <div>
+                    <strong>Nmap</strong>
+                    <span>Available on the Nmap page</span>
+                </div>
+            </label>
+            <label class="module">
+                <input type="checkbox" name="scanners" value="web">
+                <div>
+                    <strong>Web Security</strong>
+                    <span>Planned — not yet implemented</span>
+                </div>
+            </label>
+            <label class="module">
+                <input type="checkbox" name="scanners" value="threat_intel">
+                <div>
+                    <strong>Threat Intelligence</strong>
+                    <span>Planned — not yet implemented</span>
+                </div>
+            </label>
+            <label class="module">
+                <input type="checkbox" name="scanners" value="custom_rules">
+                <div>
+                    <strong>Custom Rules</strong>
+                    <span>Planned — not yet implemented</span>
+                </div>
+            </label>
+        </div>
+
+        <button class="button" type="submit">Save Scan Request</button>
+    </form>
+
+    <div class="notice">
+        <strong>Important:</strong> Saving a request does not execute a scan.
+        Use only systems you own or are explicitly authorized to assess.
+    </div>
+</section>
+
+<section class="panel">
+    <div class="panel-heading">
+        <div>
+            <h2>Recent scan requests</h2>
+            <p class="subtitle">Saved requests, not completed Nmap scan runs.</p>
+        </div>
+        <a href="{{ url_for('history_page') }}">View scan history →</a>
+        <form method="POST" action="{{ url_for('clear_scan_requests') }}"
+              onsubmit="return confirm('Clear all saved requests that have no linked Nmap history? Linked requests will be kept.');">
+            <button class="button" type="submit">Clear All Requests</button>
+        </form>
+    </div>
+
+    {% if scans %}
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Target</th>
+                    <th>Modules</th>
+                    <th>Status</th>
+                    <th>Date (UTC)</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for scan in scans %}
+                <tr>
+                    <td>#{{ scan.id }}</td>
+                    <td>{{ scan.target }}</td>
+                    <td>{{ scan.scan_type }}</td>
+                    <td><span class="status">{{ scan.status }}</span></td>
+                    <td>{{ scan.created_at }}</td>
+                    <td>
+                        <form method="POST"
+                              action="{{ url_for('delete_scan_request', request_id=scan.id) }}"
+                              onsubmit="return confirm('Delete saved request #{{ scan.id }}? Requests linked to Nmap history will be kept.');">
+                            <button class="button" type="submit">Delete</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty">
+        <strong>No scan requests yet</strong>
+        <p>Create your first request using the form above.</p>
+    </div>
+    {% endif %}
+</section>
+{% endblock %}

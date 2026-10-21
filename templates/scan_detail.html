@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+
+{% block title %}Scan #{{ scan.id }} Findings | Shadow Map GRC{% endblock %}
+
+{% block header %}
+<h1>Scan #{{ scan.id }} Findings</h1>
+<p class="subtitle">
+    Target: {{ scan.target }} · Started (UTC): {{ scan.started_at }}
+</p>
+{% endblock %}
+
+{% block content %}
+<style>
+    .detail-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 18px;
+    }
+    .detail-button {
+        display: inline-block;
+        padding: 8px 11px;
+        border: 1px solid var(--border);
+        border-radius: 7px;
+        color: var(--accent);
+        text-decoration: none;
+        font-size: 12px;
+        font-weight: 650;
+    }
+    .detail-text {
+        min-width: 200px;
+        max-width: 460px;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        line-height: 1.5;
+    }
+</style>
+
+<div class="detail-actions">
+    <a class="detail-button" href="{{ url_for('history_page') }}">← All scans</a>
+    <a class="detail-button"
+       href="{{ url_for('nmap_results', scan_id=scan.id) }}">Full Nmap results</a>
+    <a class="detail-button"
+       href="{{ url_for('automatic_risks.findings_page', status='All') }}">
+       All finding reviews
+    </a>
+</div>
+
+<section class="panel">
+    <div class="panel-heading">
+        <div>
+            <h2>Findings from this scan</h2>
+            <p class="subtitle">
+                {{ findings|length }} observations · Status: {{ scan.status }}
+            </p>
+        </div>
+    </div>
+
+    {% if findings %}
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Finding</th>
+                    <th>Severity</th>
+                    <th>Review status</th>
+                    <th>Evidence</th>
+                    <th>Recommendation</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for finding in findings %}
+                <tr>
+                    <td>
+                        <strong>#{{ finding.id }} · {{ finding.title }}</strong>
+                        <div class="muted small" style="margin-top:6px;">
+                            Confidence: {{ finding.confidence }}
+                        </div>
+                        <div class="detail-text" style="margin-top:8px;">
+                            {{ finding.description }}
+                        </div>
+                    </td>
+                    <td>{{ finding.suggested_severity }}</td>
+                    <td><span class="status">{{ finding.status }}</span></td>
+                    <td><div class="detail-text">{{ finding.evidence }}</div></td>
+                    <td><div class="detail-text">{{ finding.recommendation }}</div></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty">
+        <strong>No findings are linked to this scan.</strong>
+        <p>
+            This can happen when no open ports produced observations, or when
+            the scan did not complete successfully.
+        </p>
+    </div>
+    {% endif %}
+</section>
+
+<section class="panel">
+    <div class="panel-heading">
+        <div>
+            <h2>Ports observed in this scan</h2>
+            <p class="subtitle">Port results are limited to scan #{{ scan.id }}.</p>
+        </div>
+    </div>
+
+    {% if ports %}
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Port</th>
+                    <th>Protocol</th>
+                    <th>State</th>
+                    <th>Service</th>
+                    <th>Product / version</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for port in ports %}
+                <tr>
+                    <td>{{ port.port }}</td>
+                    <td>{{ port.protocol }}</td>
+                    <td>{{ port.state }}</td>
+                    <td>{{ port.service or 'Unknown' }}</td>
+                    <td>
+                        {{ port.product or '' }}
+                        {% if port.version %} {{ port.version }}{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="muted">No port records were saved for this scan.</p>
+    {% endif %}
+</section>
+{% endblock %}
