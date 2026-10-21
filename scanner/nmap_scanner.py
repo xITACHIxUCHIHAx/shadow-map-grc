@@ -119,7 +119,8 @@ def run_nmap(target, scan_profile="all_ports", timeout_seconds=180):
         "-Pn",
         "-n",
         "-T3",
-        "-p-",
+        "--top-ports",
+        "100",
         "--reason",
         "-oX", "-",
         target,
@@ -168,11 +169,11 @@ def run_nmap(target, scan_profile="all_ports", timeout_seconds=180):
     }
 
     command_display = (
-        "nmap -sT -Pn -n -T3 -p- --reason -oX -"
+        "nmap -sT -Pn -n -T3 --top-ports 100 --reason -oX -"
     )
     if scan_profile == "service_detection":
         command_display = (
-            "nmap -sV -sT -Pn -n -T3 -p- --reason -oX -"
+            "nmap -sV -sT -Pn -n -T3 --top-ports 100 --reason -oX -"
         )
 
     return {
