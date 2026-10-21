@@ -122,4 +122,4 @@ ISO 27001:2022 mappings support assessment and documentation; they do not certif
 
 ## License
 
-No license is implied unless a license file is included in this project.
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
