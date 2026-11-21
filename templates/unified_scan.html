@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Unified Scan | Shadow Map GRC{% endblock %}
+
+{% block header %}
+<h1>Unified Scan</h1>
+<p class="subtitle">Run Nmap, Web Security and Threat Intelligence assessments from one workspace.</p>
+{% endblock %}
+
+{% block content %}
+    <!-- ZAP Live Progress Bar (shown only when a ZAP active scan is running) -->
+    <div id="zap-progress-container" class="card" style="display: none; margin-bottom: 20px; border-left: 4px solid #3498db; padding: 15px; background: #fff;">
+        <h3 style="margin-top: 0;">OWASP ZAP Background Attack</h3>
+        <p class="muted" style="margin-bottom: 10px;">ZAP is actively attacking the target. This runs in the background.</p>
+        <div style="background: #e0e0e0; border-radius: 5px; overflow: hidden; margin-bottom: 10px;">
+            <div id="zap-progress-bar" style="width: 0%; height: 15px; background: #3498db; transition: width 0.5s;"></div>
+        </div>
+        <p id="zap-progress-text" style="font-size: 0.9em; margin: 0;">Initializing ZAP...</p>
+        <button type="button" id="zap-stop-btn" class="zap-stop-btn">
+            ■ &nbsp;Stop ZAP Scan
+        </button>
+    </div>
+
+    <section class="panel unified-scan-page">
+        {% include "_unified_scan_form.html" %}
+    </section>
+
+    <script>
+document.addEventListener("DOMContentLoaded", function () {
+    const progressContainer = document.getElementById("zap-progress-container");
+    const progressBar = document.getElementById("zap-progress-bar");
+    const progressText = document.getElementById("zap-progress-text");
+    if (!progressContainer) return;
+
+    function updateZapProgress() {
+        fetch("/api/zap-status")
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (data.running) {
+                    progressContainer.style.display = "block";
+                    const progress = parseInt(data.ascan, 10) || 0;
+                    progressBar.style.width = progress + "%";
+                    if (progress === 100) {
+                        progressText.innerText = "Active Scan Complete! Findings are being imported.";
+                        progressBar.style.background = "#2ecc71";
+                    } else {
+                        progressText.innerText = "Active Scan: " + progress + "% (Spider: " + (data.spider || 0) + "%)";
+                        progressBar.style.background = "#3498db";
+                    }
+                } else if (progressBar.style.width !== "100%") {
+                    progressContainer.style.display = "none";
+                }
+            })
+            .catch(function () {});
+    }
+
+    const stopBtn = document.getElementById("zap-stop-btn");
+    if (stopBtn) {
+        stopBtn.addEventListener("click", function () {
+            stopBtn.disabled = true;
+            stopBtn.innerText = "Stopping…";
+            fetch("/api/zap-stop", { method: "POST" })
+                .then(function (r) { return r.json(); })
+                .then(function () {
+                    stopBtn.innerText = "■ Stopped";
+                    stopBtn.style.background = "#95a5a6";
+                })
+                .catch(function () {
+                    stopBtn.innerText = "Stop failed — try again";
+                    stopBtn.disabled = false;
+                });
+        });
+    }
+
+    setInterval(updateZapProgress, 5000);
+    updateZapProgress();
+});
+</script>
+{% endblock %}

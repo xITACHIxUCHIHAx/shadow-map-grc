@@ -1,0 +1,109 @@
+
+
+<section class="unified-scan-panel">
+  <div class="unified-scan-heading">
+    <div>
+      <div class="unified-scan-kicker">Unified assessment workspace</div>
+      <h2>Run a security assessment</h2>
+      <p>Enter targets once, select the modules you need, and submit them together.</p>
+    </div>
+    <div class="unified-scan-mark" aria-hidden="true">⌁</div>
+  </div>
+
+  <form method="post" action="{{ url_for('unified_scan') }}">
+    <label class="form-label" for="unified_targets">Target IPs, hostnames or HTTP/HTTPS URLs</label>
+    <textarea
+      class="unified-target-input"
+      id="unified_targets"
+      name="targets"
+      maxlength="7000"
+      rows="4"
+      placeholder="192.185.129.249&#10;example.com&#10;https://cloudflare.com&#10;8.8.8.8"
+      required
+      spellcheck="false"
+    ></textarea>
+    <p class="unified-helper">Enter one target per line. Mix public and private IP addresses, localhost, internal hostnames and HTTP/HTTPS URLs. Maximum 25 targets.</p>
+
+    <label class="form-label">Select assessment modules</label>
+    <div class="unified-module-grid">
+      <label class="unified-module-option">
+        <input type="checkbox" name="modules" value="nmap" {% if active_page in ['nmap', 'nmap_page'] %}checked{% endif %}>
+        <div><strong>◎ &nbsp;Nmap</strong><span>IP addresses and hostnames · TCP port assessment</span></div>
+      </label>
+      <label class="unified-module-option">
+        <input type="checkbox" name="modules" value="web_security" {% if active_page in ['web_security', 'web_security_page'] %}checked{% endif %}>
+        <div><strong>◈ &nbsp;Web Security</strong><span>Authorized public/private HTTP/HTTPS websites · headers, cookies and web discovery</span></div>
+      </label>
+      <label class="unified-module-option">
+        <input type="checkbox" name="modules" value="threat_intel" {% if active_page in ['threat_intel', 'threat_intel_page'] %}checked{% endif %}>
+        <div><strong>⬡ &nbsp;Threat Intelligence</strong><span>Public IPv4 addresses · Shodan InternetDB context</span></div>
+      </label>
+      <label class="unified-module-option">
+        <input type="checkbox" name="modules" value="firewall" {% if active_page in ['firewall', 'firewall_page'] %}checked{% endif %}>
+        <div><strong>⬢ &nbsp;Firewall Detection</strong><span>Network filtering, TLS and HTTPS security indicators · Native Python detection</span></div>
+      </label>
+      <label class="unified-module-option">
+        <input type="checkbox" name="modules" value="zap">
+        <div><strong>🕷 &nbsp;OWASP ZAP</strong><span>Automated web application assessment · ZAP spider and active scan</span></div>
+      </label>
+    </div>
+
+    <div class="unified-profile-row">
+      <label class="form-label" for="unified_nmap_profile">Nmap scan profile</label>
+      <select id="unified_nmap_profile" name="nmap_profile">
+        <option value="quick">Quick — top 100 TCP ports</option>
+        <option value="standard" selected>Standard — top 1,000 TCP ports</option>
+        <option value="full_tcp">Full TCP — ports 1–65535</option>
+      </select>
+      <p class="unified-helper">This setting applies only when Nmap is selected.</p>
+    </div>
+
+    <div class="unified-profile-row">
+      <label class="form-label" for="unified_web_assessment_profile">Web Assessment profile</label>
+      <select id="unified_web_assessment_profile" name="web_assessment_profile">
+        <option value="standard" selected>Standard — baseline web security assessment</option>
+        <option value="comprehensive">Comprehensive — expanded non-destructive checks</option>
+        <option value="deep">Deep — maximum authorized assessment coverage</option>
+      </select>
+      <p class="unified-helper">Applies only to Web Security. Every target must match an approved, unexpired authorization scope.</p>
+    </div>
+
+    <div class="unified-profile-row">
+      <label class="form-label" for="unified_custom_ports">Custom TCP ports (optional)</label>
+      <input
+        type="text"
+        id="unified_custom_ports"
+        name="custom_ports"
+        inputmode="numeric"
+        maxlength="20000"
+        placeholder="22 or 22,21,443"
+        autocomplete="off"
+        spellcheck="false"
+      >
+      <p class="unified-helper">Enter comma-separated TCP ports, 1–65535. Leave blank to use the selected profile for Nmap or the default ports for Firewall Detection. Firewall Detection supports up to 16 custom ports.</p>
+    </div>
+
+    <label class="unified-module-option unified-os-detection-option" for="unified_os_detection">
+      <input
+        type="checkbox"
+        id="unified_os_detection"
+        name="os_detection"
+        value="yes"
+      >
+      <div>
+        <strong>⌘ &nbsp;Enable OS Detection</strong>
+        <span>Uses a restricted administrator-approved Nmap helper. OS fingerprinting is best-effort and may be inconclusive without suitable open and closed ports.</span>
+      </div>
+    </label>
+
+    <label class="unified-auth">
+      <input type="checkbox" name="authorized" value="yes" required>
+      <span><strong>Authorized assessment confirmation</strong><span>I own these systems or have explicit permission to assess every target submitted.</span></span>
+    </label>
+
+    <div class="unified-submit-row">
+      <button class="button" type="submit">ϟ &nbsp;Run selected assessments</button>
+      <span class="small muted">One target · Selected modules run sequentially</span>
+    </div>
+  </form>
+</section>

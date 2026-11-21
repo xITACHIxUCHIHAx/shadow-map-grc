@@ -1,0 +1,196 @@
+{% extends "base.html" %}
+
+{% block title %}ZAP Proxy | Shadow Map GRC{% endblock %}
+
+{% block header %}
+<h1>ZAP Proxy</h1>
+<p class="subtitle">Managed OWASP ZAP integration for Shadow Map GRC.</p>
+{% endblock %}
+
+{% block content %}
+
+<section class="panel" id="zap-connection-status">
+    <div class="panel-heading">
+        <h2>OWASP ZAP Connection</h2>
+    </div>
+
+    {% if connection_status == "connected" %}
+        <p><strong>Status:</strong> Connected</p>
+        {% if zap_status.installed %}
+            <p class="muted small">Installation detected: {{ zap_status.path }}</p>
+        {% endif %}
+    {% elif connection_status == "unavailable" %}
+        <p><strong>Status:</strong> Connection unavailable</p>
+        <p class="muted small">Check the error details and try starting ZAP again.</p>
+    {% elif connection_status == "error" %}
+        <p><strong>Status:</strong> An unexpected error occurred</p>
+    {% else %}
+        <p><strong>Status:</strong> Not checked in this session</p>
+        <p class="muted small">Start or check ZAP to verify the local API connection.</p>
+    {% endif %}
+
+    {% if error %}
+        <div class="notice">
+            <strong>Details:</strong> {{ error }}
+        </div>
+    {% endif %}
+
+    <form method="post" action="{{ url_for('zap_proxy_page') }}">
+        <div class="button-row">
+            <button class="button" type="submit" name="action" value="start">
+                Start / Check ZAP
+            </button>
+        </div>
+    </form>
+
+    <p class="muted small">
+        Shadow Map GRC manages the local ZAP process and generates its API
+        key internally. Opening this page does not start ZAP or download software.
+    </p>
+</section>
+
+<section class="panel" id="zap-installation-status">
+    <div class="panel-heading">
+        <h2>OWASP ZAP Installation</h2>
+    </div>
+
+    {% if zap_status.installed %}
+        <p><strong>Status:</strong> Installed</p>
+        <p class="muted small">Detected path: {{ zap_status.path }}</p>
+    {% else %}
+        <p><strong>Status:</strong> Not detected</p>
+        <p>{{ zap_status.guidance }}</p>
+        <p class="muted small">
+            Select Start / Check ZAP to let Shadow Map GRC install and
+            configure its managed local ZAP instance when required.
+            The first installation requires an internet connection and
+            additional disk space.
+        </p>
+    {% endif %}
+</section>
+
+<section class="panel" id="zap-auto-sync-status">
+    <div class="panel-heading">
+        <h2>Automatic Alert Synchronization</h2>
+    </div>
+
+    <p>
+        Shadow Map GRC periodically checks existing ZAP alerts and creates
+        reviewable GRC draft findings. It does not initiate scans.
+    </p>
+
+    <p><strong>Status:</strong>
+        {% if sync_status.status == "ok" %}
+            Synchronization completed
+        {% elif sync_status.status == "not_configured" %}
+            Waiting for managed ZAP startup
+        {% elif sync_status.status == "unavailable" %}
+            ZAP API unavailable
+        {% elif sync_status.status == "error" %}
+            Synchronization error
+        {% else %}
+            {{ sync_status.status|replace("_", " ")|title }}
+        {% endif %}
+    </p>
+
+    <p><strong>Last check:</strong>
+        {{ sync_status.last_checked|datetime if sync_status.last_checked else "Not checked yet" }}
+    </p>
+    <p><strong>Existing alerts fetched:</strong> {{ sync_status.fetched }}</p>
+    <p><strong>New draft findings created:</strong> {{ sync_status.created }}</p>
+
+    <p class="muted small">
+        Duplicate alerts are skipped. Review draft findings before accepting
+        them into your GRC records.
+    </p>
+</section>
+
+<section class="panel" id="zap-alert-management">
+    <div class="panel-heading">
+        <h2>Existing ZAP Alerts</h2>
+    </div>
+
+    <p class="section-description">
+        Retrieve alerts already present in ZAP or explicitly import them
+        into reviewable GRC draft findings.
+    </p>
+
+    <form method="post" action="{{ url_for('zap_proxy_page') }}">
+        <div class="button-row">
+            <button class="button" type="submit" name="action" value="fetch_alerts">
+                Fetch Existing Alerts
+            </button>
+            <button class="button" type="submit" name="action" value="import_alerts">
+                Import Alerts to Draft Findings
+            </button>
+        </div>
+    </form>
+</section>
+
+{% if alerts %}
+<section class="panel" id="zap-alert-preview">
+    <div class="panel-heading">
+        <h2>Alert Preview</h2>
+    </div>
+
+    <p class="muted small">
+        Showing {{ alert_count }} alert(s) retrieved from ZAP.
+        These are previews of existing alerts.
+    </p>
+
+    <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th>Risk</th>
+                    <th>Alert</th>
+                    <th>URL</th>
+                    <th>Confidence</th>
+                    <th>Description</th>
+                    <th>Solution</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for alert in alerts %}
+                <tr>
+                    <td>{{ alert.risk or "Unknown" }}</td>
+                    <td>{{ alert.name or alert.alert or "Unnamed alert" }}</td>
+                    <td>{{ alert.url or "—" }}</td>
+                    <td>{{ alert.confidence or "Unknown" }}</td>
+                    <td>{{ alert.description or "—" }}</td>
+                    <td>{{ alert.solution or "—" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% elif alert_count %}
+<section class="panel" id="zap-alert-preview">
+    <h2>Alert Preview</h2>
+    <p>No alert records were returned.</p>
+</section>
+{% endif %}
+
+<section class="panel">
+    <div class="panel-heading">
+        <h2>Managed Integration Details</h2>
+    </div>
+
+    <ol>
+        <li>Shadow Map GRC detects or installs its managed local OWASP ZAP instance.</li>
+        <li>Shadow Map GRC generates and stores the ZAP API key internally.</li>
+        <li>The application starts ZAP in daemon mode and verifies its local API connection.</li>
+        <li>Existing alerts can be retrieved and imported into GRC draft findings.</li>
+        <li>Review draft findings before accepting them into your GRC records.</li>
+    </ol>
+
+    <div class="notice">
+        <strong>Security boundary:</strong>
+        The integration uses a local ZAP API endpoint. Connection checks
+        and alert retrieval do not start scans. Scanning remains an explicit
+        action through the authorized assessment workflow.
+    </div>
+</section>
+
+{% endblock %}

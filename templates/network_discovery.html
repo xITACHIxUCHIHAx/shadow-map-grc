@@ -1,0 +1,264 @@
+{% extends "base.html" %}
+
+{% block title %}LAN Network Monitor | Shadow Map GRC{% endblock %}
+
+{% block header %}
+<h1>LAN Network Monitor</h1>
+<p class="subtitle">
+  Discover and maintain an inventory of devices connected to an authorized local network.
+</p>
+{% endblock %}
+
+{% block content %}
+
+
+
+<div class="lan-monitor">
+
+
+
+  <section class="panel">
+    <h2>Network Configuration</h2>
+
+    {% if interface_error %}
+      <div class="flash error">{{ interface_error }}</div>
+    {% endif %}
+
+    {% if interfaces %}
+      <form
+        method="POST"
+        action="{{ url_for('network_discovery.index') }}"
+        id="network-scan-form"
+      >
+        <div class="form-group">
+          <label class="form-label" for="interface">Active Network Interface</label>
+          <select
+            class="form-control"
+            id="interface"
+            name="interface"
+            required
+          >
+            <option value="">Select an active interface</option>
+            {% for interface in interfaces %}
+              <option
+                value="{{ interface.name }}"
+                data-network="{{ interface.network }}"
+                {% if selected_interface == interface.name %}selected{% endif %}
+              >
+                {{ interface.name }} —
+                {{ interface.address }}/{{ interface.prefix_length }}
+                ({{ interface.network }})
+                — Gateway: {{ interface.gateway or "Not detected" }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="subnet">Detected IPv4 Subnet (editable)</label>
+          <input
+            class="form-control"
+            type="text"
+            id="subnet"
+            name="subnet"
+            value="{{ selected_subnet }}"
+            placeholder="Example: 192.168.1.0/24"
+            required
+            pattern="[0-9./]+"
+          >
+          <p class="field-note">
+            Automatically detected from the selected interface. You can edit
+            it to scan a smaller subnet within that interface's network.
+          </p>
+        </div>
+
+        <div class="authorization">
+          <label>
+            <input
+              type="checkbox"
+              name="authorized"
+              value="yes"
+              required
+            >
+            I confirm that I am authorized to scan this network and its devices.
+          </label>
+        </div>
+
+        <div class="actions">
+          <button type="submit" class="button">
+            Scan Network
+          </button>
+        </div>
+      </form>
+    {% else %}
+      <div class="empty">
+        No active IPv4 network interfaces are available for discovery.
+        Check that your network connection is active.
+      </div>
+    {% endif %}
+  </section>
+
+  <section class="panel">
+    <div class="monitor-toolbar">
+      <div>
+        <h2>Connected Device Inventory</h2>
+        <p class="monitor-note">
+          A refresh performs a new authorized scan using the configuration above.
+        </p>
+      </div>
+
+      <div>
+        <strong>{{ devices|length }}</strong> recorded device(s)
+
+        {% if interfaces %}
+          <button
+            type="submit"
+            form="network-scan-form"
+            class="monitor-refresh secondary-button"
+          >
+            ↻ Refresh Devices
+          </button>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if devices %}
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>IP Address</th>
+              <th>MAC Address</th>
+              <th>Hostname</th>
+              <th>Vendor</th>
+              <th>Estimated Device Type</th>
+              <th>Confidence</th>
+
+              <th>Status</th>
+              <th>First Seen</th>
+              <th>Last Seen</th>
+              <th>Open TCP Ports & Services</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for device in devices %}
+              <tr>
+                <td><strong>{{ device.ip_address }}</strong></td>
+                <td>{{ device.mac_address or "Not available" }}</td>
+                <td>
+                  {% if device.hostnames %}
+                    {{ device.hostnames|join(", ") }}
+                  {% else %}
+                    <span class="muted">Not available</span>
+                  {% endif %}
+                </td>
+                <td>{{ device.vendor or "Unknown" }}</td>
+                <td>{{ device.device_type|replace("_", " ")|title }}{% if device.classification_confidence != "high" %}*{% endif %}</td>
+                <td>{{ device.classification_confidence|title }}</td>
+
+                <td>
+                  <span class="monitor-status">
+                    {{ device.status|replace("_", " ")|title }}
+                  </span>
+                </td>
+                <td>{{ device.first_seen|datetime }}</td>
+                <td>{{ device.last_seen|datetime }}</td>
+                <td class="monitor-ports">
+                  {% if device.open_ports %}
+                    {% for port in device.open_ports %}
+                      <div>
+                        <strong>{{ port.port }}/{{ port.protocol|default("tcp") }}</strong>
+                        — {{ port.service or "Unknown service" }}
+                        {% if port.product %}({{ port.product }}{% if port.version %} {{ port.version }}{% endif %}){% endif %}
+                        {% if port.extra_info or port.extrainfo %}
+                          <div class="monitor-note">
+                            {{ port.extra_info or port.extrainfo }}
+                          </div>
+                        {% endif %}
+                      </div>
+                    {% endfor %}
+                  {% else %}
+                    No open TCP ports recorded
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="empty">
+        No devices have been discovered yet. Select an active interface,
+        confirm authorization, and scan your local network.
+      </div>
+    {% endif %}
+  </section>
+
+  <section class="panel">
+    <h2>Recent Scan Runs</h2>
+
+    {% if recent_runs %}
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Run ID</th>
+              <th>Interface</th>
+              <th>Subnet</th>
+              <th>Status</th>
+              <th>Devices Found</th>
+              <th>Started</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for run in recent_runs %}
+              <tr>
+                <td>#{{ run.id }}</td>
+                <td>{{ run.interface_name }}</td>
+                <td>{{ run.subnet }}</td>
+                <td>{{ run.status|title }}</td>
+                <td>{{ run.devices_found }}</td>
+                <td>{{ run.started_at|datetime }}</td>
+                <td>
+                  <a class="action-button" href="{{ url_for('network_discovery.run_details', run_id=run.id) }}">
+                    {% if run.status == "failed" %}
+                      View Error
+                    {% else %}
+                      View Details
+                    {% endif %}
+                  </a>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="empty">No scan runs have been recorded.</div>
+    {% endif %}
+  </section>
+
+</div>
+
+<script>
+(() => {
+  const interfaceSelect = document.getElementById("interface");
+  const subnetInput = document.getElementById("subnet");
+
+  if (!interfaceSelect || !subnetInput) return;
+
+  interfaceSelect.addEventListener("change", () => {
+    const selectedOption =
+      interfaceSelect.options[interfaceSelect.selectedIndex];
+
+    const detectedSubnet = selectedOption?.dataset.network;
+
+    if (detectedSubnet) {
+      subnetInput.value = detectedSubnet;
+    }
+  });
+})();
+</script>
+
+{% endblock %}

@@ -1,0 +1,380 @@
+{% extends "base.html" %}
+
+{% block title %}Firewall Detection Result | Shadow Map GRC{% endblock %}
+
+{% block header %}
+<h1>Firewall Detection Result</h1>
+<p class="subtitle">Network filtering, service identification, application fingerprinting, TLS and WAF observations.</p>
+{% endblock %}
+
+{% block content %}
+<div class="report-page">
+  <div class="result-history-nav">
+    <a class="button result-history-button" href="{{ url_for('history_page') }}" onclick="return shadowMapBackToHistory();">Back to Scan History</a>
+  </div>
+<section class="panel">
+  <div class="panel-heading">
+    <div>
+      <h2>{{ record.target }}</h2>
+      <p class="subtitle">Firewall Scan #{{ record.id }} · Started {{ record.started_at|datetime }}</p>
+    </div>
+    <a class="button" href="{{ url_for('export_firewall_pdf', scan_id=record.id) }}">Download PDF</a>
+
+    {% if record.status == "Completed" %}
+      <span class="status">Completed</span>
+    {% else %}
+      <span class="batch-status">{{ record.status }}</span>
+    {% endif %}
+  </div>
+
+  <div class="module-grid">
+    <div class="module"><div><strong>Duration:</strong><span>{% if record.duration_seconds is not none %}{{ "%.2f"|format(record.duration_seconds) }}s{% else %}—{% endif %}</span></div></div>
+    <div class="module"><div><strong>Finished:</strong><span>{{ record.finished_at|datetime if record.finished_at else "—" }}</span></div></div>
+    <div class="module"><div><strong>Scan ID:</strong><span>FIREWALL #{{ record.id }}</span></div></div>
+  </div>
+
+  {% if record.error %}
+    <div class="notice"><strong>Assessment error:</strong> {{ record.error }}</div>
+  {% endif %}
+</section>
+
+{% if result %}
+<section class="panel">
+  <div class="panel-heading">
+    <div>
+      <h2>Assessment overview</h2>
+      <p class="subtitle">Resolved target addresses and observed security indicators.</p>
+    </div>
+    <span class="status">{{ result.duration_seconds }}s</span>
+  </div>
+
+  <div class="module-grid">
+    <div class="module"><div><strong>Resolved addresses:</strong><span>{{ result.resolved_addresses|length }}</span></div></div>
+    <div class="module"><div><strong>TCP ports tested:</strong><span>{{ result.tcp.ports|length }}</span></div></div>
+    <div class="module"><div><strong>WAF indicators:</strong><span>{{ "Observed" if result.waf.detected else "Not observed" }}</span></div></div>
+  </div>
+
+  <h3>Resolved addresses</h3>
+  <ul>
+    {% for address in result.resolved_addresses %}
+      <li>{{ address }}</li>
+    {% else %}
+      <li>No addresses were resolved.</li>
+    {% endfor %}
+  </ul>
+</section>
+
+{% if result.local_firewall is defined and result.local_firewall %}
+<section class="panel">
+  <div class="panel-heading">
+    <div>
+      <h2>Local Machine Firewall Detection</h2>
+      <p class="subtitle">Read-only inspection of the machine running Shadow Map GRC, separate from the remote assessment target.</p>
+    </div>
+    <span class="{% if result.local_firewall.status == 'active' %}status{% else %}batch-status{% endif %}">
+      {{ result.local_firewall.status|replace("_", " ")|title }}
+    </span>
+  </div>
+
+  <div class="module-grid">
+    <div class="module"><div><strong>Operating system:</strong><span>{{ result.local_firewall.operating_system|title }}</span></div></div>
+    <div class="module"><div><strong>Platform:</strong><span>{{ result.local_firewall.platform }}</span></div></div>
+    <div class="module"><div><strong>Technologies inspected:</strong><span>{{ result.local_firewall.technologies|length }}</span></div></div>
+    <div class="module"><div><strong>Service observations:</strong><span>{{ result.local_firewall.service_observations|length }}</span></div></div>
+  </div>
+
+  <h3>Firewall technologies</h3>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Technology</th><th>Category</th><th>Detection status</th><th>Available</th></tr>
+      </thead>
+      <tbody>
+        {% for item in result.local_firewall.technologies %}
+        <tr>
+          <td>{{ item.name }}</td>
+          <td>{{ item.category|replace("_", " ")|title }}</td>
+          <td>{{ item.status|replace("_", " ")|title }}</td>
+          <td>{{ "Yes" if item.available else "No" }}</td>
+        </tr>
+        {% if item.evidence or item.error %}
+        <tr>
+          <td colspan="4">
+            {% if item.evidence %}
+            <strong>Evidence:</strong>
+            <ul>{% for clue in item.evidence %}<li>{{ clue }}</li>{% endfor %}</ul>
+            {% endif %}
+            {% if item.error %}<strong>Inspection note:</strong> {{ item.error }}{% endif %}
+          </td>
+        </tr>
+        {% endif %}
+        {% else %}
+        <tr><td colspan="4">No firewall technologies could be inspected on this platform.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Local service observations</h3>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Source</th><th>Service or profile</th><th>Status</th><th>Inspection note</th></tr>
+      </thead>
+      <tbody>
+        {% for item in result.local_firewall.service_observations %}
+        <tr>
+          <td>{{ item.source }}</td>
+          <td>{{ item.name }}</td>
+          <td>{{ item.status|replace("_", " ")|title }}</td>
+          <td>
+            {% if item.evidence %}
+              <ul>{% for clue in item.evidence %}<li>{{ clue }}</li>{% endfor %}</ul>
+            {% endif %}
+            {% if item.error %}{{ item.error }}
+            {% elif item.default_inbound is defined %}Inbound: {{ item.default_inbound }} · Outbound: {{ item.default_outbound }}
+            {% elif not item.evidence %}—{% endif %}
+            {% if item.limitation %}<p>{{ item.limitation }}</p>{% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4">No additional service or profile observations are available.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Detection limitations</h3>
+  <ul>{% for note in result.local_firewall.limitations %}<li>{{ note }}</li>{% endfor %}</ul>
+</section>
+{% endif %}
+
+<section class="panel">
+  <div class="panel-heading">
+    <div>
+      <h2>Network filtering observations</h2>
+      <p class="subtitle">TCP connection behaviour across the selected ports.</p>
+    </div>
+  </div>
+
+  <div class="module-grid">
+    <div class="module"><div><strong>Open:</strong><span>{{ result.tcp.counts.open }}</span></div></div>
+    <div class="module"><div><strong>Closed:</strong><span>{{ result.tcp.counts.closed }}</span></div></div>
+    <div class="module"><div><strong>No response:</strong><span>{{ result.tcp.counts.no_response }}</span></div></div>
+    <div class="module"><div><strong>Indeterminate:</strong><span>{{ result.tcp.counts.indeterminate }}</span></div></div>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Address</th><th>Port</th><th>Protocol</th><th>State</th><th>Duration</th><th>Reason</th></tr>
+      </thead>
+      <tbody>
+        {% for item in result.tcp.ports %}
+        <tr>
+          <td>{{ item.address }}</td>
+          <td>{{ item.port }}</td>
+          <td>{{ item.protocol|upper }}</td>
+          <td>{{ item.state|replace("_", " ")|title }}</td>
+          <td>{{ item.duration_ms }} ms</td>
+          <td>{{ item.reason }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6">No TCP observations are available.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="notice"><strong>Interpretation:</strong> {{ result.tcp.interpretation }}</div>
+</section>
+
+<section class="panel">
+  <div class="panel-heading">
+    <div>
+      <h2>Service &amp; Application Identification</h2>
+      <p class="subtitle">Services and products identified from observed TCP greetings and HTTP(S) response evidence.</p>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Address</th>
+          <th>Port</th>
+          <th>Protocol</th>
+          <th>Service</th>
+          <th>Product</th>
+          <th>Version</th>
+          <th>Confidence</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in result.services["items"] %}
+          {% set app = item.application if item.application is defined and item.application else item %}
+          <tr>
+            <td>{{ item.address }}</td>
+            <td>{{ item.port }}</td>
+            <td>{{ item.protocol|upper }}</td>
+            <td>{{ item.service or "Unknown" }}</td>
+            <td>{{ app.product or "Not identified" }}</td>
+            <td>{{ app.version or "Not disclosed" }}</td>
+            <td>{{ app.confidence|default(item.confidence, true)|default("unknown")|title }}</td>
+          </tr>
+          {% if app.evidence %}
+          <tr>
+            <td colspan="7">
+              <strong>Evidence:</strong>
+              <ul>
+                {% for clue in app.evidence %}
+                  <li>{{ clue }}</li>
+                {% endfor %}
+              </ul>
+            </td>
+          </tr>
+          {% endif %}
+        {% else %}
+          <tr><td colspan="7">No service or application observations are available.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="notice">
+    <strong>Identification limitation:</strong>
+    Product identification depends on explicit response evidence. A port number alone does not establish the running product or version.
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-heading">
+    <div>
+      <h2>HTTP(S) response observations</h2>
+      <p class="subtitle">{{ result.https.url }}</p>
+    </div>
+    {% if result.https.checked %}
+      <span class="status">HTTP {{ result.https.status_code }}</span>
+    {% else %}
+      <span class="batch-status">Not checked</span>
+    {% endif %}
+  </div>
+
+  <div class="module-grid">
+    <div class="module"><div><strong>HTTP(S) checked:</strong><span>{{ "Yes" if result.https.checked else "No" }}</span></div></div>
+    <div class="module"><div><strong>Server:</strong><span>{{ result.https.server or "Not disclosed" }}</span></div></div>
+    <div class="module"><div><strong>Connected address:</strong><span>{{ result.https.connected_address or "—" }}</span></div></div>
+    <div class="module"><div><strong>Redirect followed:</strong><span>No</span></div></div>
+  </div>
+
+  {% if result.https.headers %}
+  <h3>Selected response headers</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Header</th><th>Observed value</th></tr></thead>
+      <tbody>
+        {% for name, value in result.https.headers.items() %}
+        <tr><td>{{ name }}</td><td>{{ value }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <p class="muted">No selected security or proxy response headers were observed.</p>
+  {% endif %}
+
+  {% if result.https.set_cookie %}
+    <h3>Set-Cookie summary · values redacted</h3>
+    <p>{{ result.https.set_cookie }}</p>
+    <p class="muted">Cookie values are not retained. Names and selected security attributes are shown for assessment purposes.</p>
+  {% endif %}
+
+  {% if result.https.error %}
+    <div class="notice"><strong>HTTP(S) inspection note:</strong> {{ result.https.error }}</div>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <div class="panel-heading">
+    <div>
+      <h2>TLS certificate observations</h2>
+      <p class="subtitle">Certificate details from a verified TLS connection.</p>
+    </div>
+    {% if result.tls.available %}
+      <span class="status">TLS available</span>
+    {% else %}
+      <span class="batch-status">Unavailable</span>
+    {% endif %}
+  </div>
+
+  {% if result.tls.available %}
+  <div class="module-grid">
+    <div class="module"><div><strong>TLS version:</strong><span>{{ result.tls.version or "—" }}</span></div></div>
+    <div class="module"><div><strong>Certificate expiry:</strong><span>{{ result.tls.not_after or "—" }}</span></div></div>
+    <div class="module"><div><strong>Connected address:</strong><span>{{ result.tls.connected_address or "—" }}</span></div></div>
+  </div>
+
+  <h3>Certificate subject</h3>
+  <pre>{{ result.tls.subject|tojson(indent=2) }}</pre>
+
+  <h3>Certificate issuer</h3>
+  <pre>{{ result.tls.issuer|tojson(indent=2) }}</pre>
+
+  <h3>Subject alternative names</h3>
+  <pre>{{ result.tls.subject_alt_names|tojson(indent=2) }}</pre>
+  {% else %}
+    <p class="muted">TLS certificate details were not available.</p>
+    {% if result.tls.error %}
+      <div class="notice"><strong>TLS inspection note:</strong> {{ result.tls.error }}</div>
+    {% endif %}
+  {% endif %}
+</section>
+
+<section class="panel">
+  <div class="panel-heading">
+    <div>
+      <h2>WAF and vendor indicators</h2>
+      <p class="subtitle">Conservative identification based on observed response signatures.</p>
+    </div>
+    <span class="batch-status">{{ result.waf.confidence|title }} confidence</span>
+  </div>
+
+  <div class="module-grid">
+    <div class="module"><div><strong>Indicators observed:</strong><span>{{ "Yes" if result.waf.detected else "No" }}</span></div></div>
+    <div class="module"><div><strong>Vendor clues:</strong><span>{{ result.waf.vendor_identification|length }}</span></div></div>
+  </div>
+
+  {% if result.waf.vendor_identification %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Vendor</th><th>Product indicators</th><th>Evidence</th><th>Confidence</th></tr></thead>
+      <tbody>
+        {% for item in result.waf.vendor_identification %}
+        <tr>
+          <td>{{ item.vendor }}</td>
+          <td>{{ item.product }}</td>
+          <td>{{ item.evidence }}</td>
+          <td>{{ item.confidence|title }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <p class="muted">No known WAF vendor signatures were observed. This does not establish that a WAF is absent.</p>
+  {% endif %}
+
+  <div class="notice"><strong>Identification limitation:</strong> {{ result.waf.limitation }}</div>
+</section>
+
+<section class="panel">
+  <h2>Assessment limitations</h2>
+  <ul>
+    {% for note in result.limitations %}
+      <li>{{ note }}</li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+</div>
+{% endblock %}

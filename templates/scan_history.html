@@ -1,0 +1,398 @@
+{% extends "base.html" %}
+
+{% block title %}Scan History | Shadow Map GRC{% endblock %}
+
+{% block header %}
+{% if target_detail is defined and target_detail %}
+<h1>Target Details — {{ target_detail.target_id }}</h1>
+<p class="subtitle">Complete assessment history for {{ target_detail.target_label }}.</p>
+{% elif history_full_module %}
+<h1>{{ history_full_module|replace('_', ' ')|title }} History</h1>
+<p class="subtitle">Review all saved records for this assessment category.</p>
+{% else %}
+<h1>Assessment History</h1>
+<p class="subtitle">Review saved security assessments across all Shadow Map GRC modules.</p>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+
+{% if target_detail is defined and target_detail %}
+<p><a class="history-button" href="{{ url_for('history_page') }}">Back to Assessment History</a></p>
+<section class="panel history-section">
+    <h2>{{ target_detail.target_label }}</h2>
+    <p><strong>Target ID:</strong> {{ target_detail.target_id }}</p>
+    <p><strong>First seen:</strong> {{ target_detail.first_seen_at|datetime }}</p>
+    <p><strong>Last seen:</strong> {{ target_detail.last_seen_at|datetime }}</p>
+    <h3>Assessment history <span class="history-count">{{ target_scans|length }}</span></h3>
+    {% if target_scans %}
+    <div class="table-wrap"><table>
+        <thead><tr><th>Scan ID</th><th>Type</th><th>Target</th><th>Status</th><th>Started</th><th>Report</th></tr></thead>
+        <tbody>
+        {% for scan in target_scans %}
+        <tr>
+            <td><strong>{{ scan.scan_id }}</strong></td>
+            <td>{{ scan.scan_type }}</td>
+            <td class="history-target">{{ scan.target }}</td>
+            <td><span class="status {{ scan.status|lower|replace(' ', '-') }}">{{ scan.status }}</span></td>
+            <td>{{ scan.started_at|datetime if scan.started_at else 'Not recorded' }}</td>
+            <td>{% if scan.result_url %}<a class="history-button" href="{{ scan.result_url }}">View report</a>{% else %}<span class="muted">Unavailable</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table></div>
+    {% else %}<p class="empty">No scans are associated with this target.</p>{% endif %}
+</section>
+{% else %}
+
+{% if history_full_module %}
+<p><a class="history-button" href="{{ url_for('history_page') }}">Back to Assessment History</a></p>
+{% endif %}
+
+
+{% if not history_full_module %}
+<section class="panel history-section">
+    <div class="panel-heading">
+        <div>
+            <h2>Global Scan History
+                <span class="history-count">{{ global_scan_count }}</span>
+            </h2>
+            <p class="subtitle">
+                Search saved module scans using globally assigned Scan IDs and Target IDs.
+            </p>
+        </div>
+    </div>
+
+    <form method="get" action="{{ url_for('history_page') }}"
+          class="history-filter">
+        <div class="history-filter-field">
+            <label for="global-scan-id"><strong>Scan ID</strong></label>
+            <select id="global-scan-id" name="global_scan_id"
+                    class="history-filter-select">
+                <option value="">All Scan IDs</option>
+                {% for value in global_history_options.global_scan_id %}
+                <option value="{{ value }}"
+                    {% if global_filter_values.global_scan_id == value %}selected{% endif %}>
+                    {{ value }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="history-filter-field">
+            <label for="global-target"><strong>Target</strong></label>
+            <select id="global-target" name="target"
+                    class="history-filter-select">
+                <option value="">All Targets</option>
+                {% for value in global_history_options.target %}
+                <option value="{{ value }}"
+                    {% if global_filter_values.target == value %}selected{% endif %}>
+                    {{ value }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="history-filter-field">
+            <label for="global-scan-type"><strong>Scan Type</strong></label>
+            <select id="global-scan-type" name="scan_type"
+                    class="history-filter-select">
+                <option value="">All Scan Types</option>
+                {% for value in global_history_options.scan_type %}
+                <option value="{{ value }}"
+                    {% if global_filter_values.scan_type == value %}selected{% endif %}>
+                    {{ value }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="history-filter-field">
+            <label for="global-status"><strong>Status</strong></label>
+            <select id="global-status" name="status"
+                    class="history-filter-select">
+                <option value="">All Statuses</option>
+                {% for value in global_history_options.status %}
+                <option value="{{ value }}"
+                    {% if global_filter_values.status == value %}selected{% endif %}>
+                    {{ value }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <button class="history-button" type="submit">Apply filters</button>
+        <a class="history-button" href="{{ url_for('history_page') }}">
+            Clear filters
+        </a>
+    </form>
+
+    {% if global_scan_history %}
+    <form method="post" action="{{ url_for('export_global_scan_history') }}"
+          id="global-history-export-form">
+        <div class="history-actions" style="margin-bottom: 12px;">
+            <button class="history-button" type="submit"
+                    name="export_format" value="pdf">
+                Download PDF
+            </button>
+            <button class="history-button" type="submit"
+                    name="export_format" value="csv">
+                Download CSV
+            </button>
+        </div>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>
+                            <input type="checkbox" id="select-all-global-scans"
+                                   aria-label="Select all scans">
+                        </th>
+                        <th>Scan ID</th>
+                    <th>Target ID</th>
+                    <th>Scan Type</th>
+                    <th>Target</th>
+                    <th>Status</th>
+                    <th>Started</th>
+                    <th>Report</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for scan in global_scan_history %}
+                <tr>
+                    <td>
+                        <input type="checkbox" name="selected_scans"
+                               value="{{ scan._selection_id }}"
+                               class="global-scan-checkbox"
+                               aria-label="Select {{ scan.scan_type }} scan for {{ scan.target }}">
+                    </td>
+                    <td>
+                        <strong>{{ scan.scan_id or 'Not assigned' }}</strong>
+                    </td>
+                    <td>
+                        {% if scan.target_id %}
+                        <a href="{{ url_for('target_details', target_id=scan.target_id) }}">{{ scan.target_id }}</a>
+                        {% else %}Not assigned{% endif %}
+                    </td>
+                    <td>{{ scan.scan_type }}</td>
+                    <td class="history-target">{{ scan.target }}</td>
+                    <td>
+                        <span class="status {{ scan.status|lower|replace(' ', '-') }}">
+                            {{ scan.status }}
+                        </span>
+                    </td>
+                    <td>{{ scan.started_at|datetime if scan.started_at else 'Not recorded' }}</td>
+                    <td>
+                        {% if scan.result_url %}
+                        <a class="history-button" href="{{ scan.result_url }}">
+                            View report
+                        </a>
+                        {% else %}
+                        <span class="muted">Unavailable</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        </div>
+    </form>
+    <script>
+    (() => {
+        const selectAll = document.getElementById("select-all-global-scans");
+        const checkboxes = document.querySelectorAll(".global-scan-checkbox");
+        if (!selectAll) return;
+
+        selectAll.addEventListener("change", () => {
+            checkboxes.forEach((checkbox) => {
+                checkbox.checked = selectAll.checked;
+            });
+        });
+
+        checkboxes.forEach((checkbox) => {
+            checkbox.addEventListener("change", () => {
+                selectAll.checked = [...checkboxes].every(item => item.checked);
+                selectAll.indeterminate =
+                    [...checkboxes].some(item => item.checked) && !selectAll.checked;
+            });
+        });
+    })();
+    </script>
+    {% else %}
+    <p class="empty">No scans match the selected filters.</p>
+    {% endif %}
+</section>
+{% endif %}
+
+{% if history_full_module == 'nmap' %}
+<section class="panel history-section">
+    <div class="panel-heading">
+        <div><h2>Nmap scans <span class="history-count">{{ nmap_scan_count }}</span></h2>
+        <p class="subtitle">Network discovery and port scan records.</p></div>
+        <a class="history-button" href="{{ url_for('nmap_page') }}">New Nmap scan</a>
+        {% if not history_full_module and nmap_scan_count > 2 %}
+        <a class="history-button" href="{{ url_for('history_page', module_slug='nmap' ) }}">View more</a>
+        {% endif %}
+    </div>
+    {% if nmap_scans %}
+    <div class="table-wrap"><table>
+        <thead><tr><th>Scan</th><th>Target</th><th>Started (IST)</th><th>Status</th><th>Open ports</th><th>Findings</th><th>Actions</th></tr></thead>
+        <tbody>{% for scan in nmap_scans %}
+        <tr>
+            <td>Nmap #{{ scan.id }}</td><td class="history-target">{{ scan.target }}</td>
+            <td>{{ scan.started_at|datetime if scan.started_at else 'Not recorded' }}</td><td><span class="status {{ scan.status|lower|replace(' ', '-') }}">{{ scan.status }}</span></td>
+            <td>{{ scan.open_ports }}</td><td>{{ scan.finding_count }} <div class="muted small">{{ scan.approved_count }} approved</div></td>
+            <td><div class="history-actions">
+                <a class="history-button" href="{{ url_for('scan_history_detail', scan_id=scan.id) }}">View Findings</a>
+                <a class="history-button" href="{{ url_for('nmap_results', scan_id=scan.id) }}">Results</a>
+                {% if scan.status in ['Completed', 'Partial'] %}<a class="history-button" href="{{ url_for('export_nmap_pdf', scan_id=scan.id) }}">PDF</a>{% endif %}
+            </div></td>
+        </tr>{% endfor %}</tbody>
+    </table></div>
+    {% else %}<p class="empty">No Nmap scans recorded yet.</p>{% endif %}
+</section>
+{% endif %}
+
+{% if history_full_module == 'web_security' %}
+<section class="panel history-section">
+    <div class="panel-heading">
+        <div><h2>Web Security scans <span class="history-count">{{ web_scan_count }}</span></h2>
+        <p class="subtitle">HTTP security headers, cookies, and web assessment records.</p></div>
+        <a class="history-button" href="{{ url_for('unified_scan_page') }}">New Unified Scan</a>
+        {% if not history_full_module and web_scan_count > 2 %}
+        <a class="history-button" href="{{ url_for('history_page', module_slug='web-security' ) }}">View more</a>
+        {% endif %}
+    </div>
+    {% if web_scans %}
+    <div class="table-wrap"><table>
+        <thead><tr><th>Scan</th><th>Target</th><th>Started (IST)</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody>{% for scan in web_scans %}
+        <tr><td>Web Security #{{ scan.id }}</td><td class="history-target">{{ scan.target }}</td>
+            <td>{{ scan.started_at|datetime if scan.started_at else 'Not recorded' }}</td><td><span class="status {{ scan.status|lower|replace(' ', '-') }}">{{ scan.status }}</span></td>
+            <td><div class="history-actions">
+                <a class="history-button" href="{{ url_for('web_security_result', scan_id=scan.id) }}">View Results</a>
+                {% if scan.status == 'Completed' %}<a class="history-button" href="{{ url_for('export_web_security_pdf', scan_id=scan.id) }}">PDF</a>{% endif %}
+            </div></td>
+        </tr>{% endfor %}</tbody>
+    </table></div>
+    {% else %}<p class="empty">No Web Security scans recorded yet.</p>{% endif %}
+</section>
+{% endif %}
+
+{% if history_full_module == 'zap' %}
+<section class="panel history-section">
+    <div class="panel-heading">
+        <div><h2>OWASP ZAP scans <span class="history-count">{{ zap_scan_count }}</span></h2>
+        <p class="subtitle">Saved ZAP active-scan records and imported alert evidence.</p></div>
+        <a class="history-button" href="{{ url_for('zap_proxy_page') }}">Open ZAP Proxy</a>
+        {% if not history_full_module and zap_scan_count > 2 %}
+        <a class="history-button" href="{{ url_for('history_page', module_slug='zap' ) }}">View more</a>
+        {% endif %}
+    </div>
+    {% if zap_scans %}
+    <div class="table-wrap"><table>
+        <thead><tr><th>Scan</th><th>Target</th><th>Started (IST)</th><th>Status</th><th>Duration</th><th>Actions</th></tr></thead>
+        <tbody>{% for scan in zap_scans %}
+        <tr>
+            <td>ZAP #{{ scan.id }}</td>
+            <td class="history-target">{{ scan.target }}</td>
+            <td>{{ scan.started_at|datetime if scan.started_at else 'Not recorded' }}</td>
+            <td><span class="status {{ scan.status|lower|replace(' ', '-') }}">{{ scan.status }}</span></td>
+            <td>{{ '%.2f s'|format(scan.duration_seconds) if scan.duration_seconds is not none else 'Not recorded' }}</td>
+            <td><div class="history-actions">
+                <a class="history-button" href="{{ url_for('zap_scan_result', scan_id=scan.id) }}">View Alerts</a>
+            </div></td>
+        </tr>{% endfor %}</tbody>
+    </table></div>
+    {% else %}<p class="empty">No OWASP ZAP scans recorded yet.</p>{% endif %}
+</section>
+{% endif %}
+
+{% if history_full_module == 'threat_intel' %}
+<section class="panel history-section">
+    <div class="panel-heading">
+        <div><h2>Threat Intelligence lookups <span class="history-count">{{ threat_lookup_count }}</span></h2>
+        <p class="subtitle">IP reputation, exposed ports, hostnames, tags, and vulnerability data.</p></div>
+        <a class="history-button" href="{{ url_for('threat_intel_page') }}">New Threat Intelligence lookup</a>
+        {% if not history_full_module and threat_lookup_count > 2 %}
+        <a class="history-button" href="{{ url_for('history_page', module_slug='threat-intel' ) }}">View more</a>
+        {% endif %}
+    </div>
+    {% if threat_lookups %}
+    <div class="table-wrap"><table>
+        <thead><tr><th>Lookup</th><th>Target</th><th>Started (IST)</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody>{% for item in threat_lookups %}
+        <tr><td>Threat Intel #{{ item.id }}</td><td class="history-target">{{ item.target }}</td>
+            <td>{{ item.started_at|datetime if item.started_at else 'Not recorded' }}</td><td><span class="status {{ item.status|lower|replace(' ', '-') }}">{{ item.status }}</span></td>
+            <td><div class="history-actions">
+                <a class="history-button" href="{{ url_for('threat_intel_result', lookup_id=item.id) }}">View Results</a>
+                {% if item.status == 'Completed' %}<a class="history-button" href="{{ url_for('export_threat_intel_pdf', lookup_id=item.id) }}">PDF</a>{% endif %}
+            </div></td>
+        </tr>{% endfor %}</tbody>
+    </table></div>
+    {% else %}<p class="empty">No Threat Intelligence lookups recorded yet.</p>{% endif %}
+</section>
+{% endif %}
+
+{% if history_full_module == 'firewall' %}
+<section class="panel history-section">
+    <div class="panel-heading">
+        <div><h2>Firewall Detection scans <span class="history-count">{{ firewall_scan_count }}</span></h2>
+        <p class="subtitle">TCP reachability, HTTPS response, TLS certificate, and WAF indicators.</p></div>
+        <a class="history-button" href="{{ url_for('unified_scan_page') }}">New Firewall assessment</a>
+        {% if not history_full_module and firewall_scan_count > 2 %}
+        <a class="history-button" href="{{ url_for('history_page', module_slug='firewall' ) }}">View more</a>
+        {% endif %}
+    </div>
+    {% if firewall_scans %}
+    <div class="table-wrap"><table>
+        <thead><tr><th>Scan</th><th>Target</th><th>Started (IST)</th><th>Status</th><th>Duration</th><th>Findings</th><th>Actions</th></tr></thead>
+        <tbody>{% for scan in firewall_scans %}
+        <tr>
+            <td>Firewall #{{ scan.id }}</td>
+            <td class="history-target">{{ scan.target }}</td>
+            <td>{{ scan.started_at|datetime if scan.started_at else 'Not recorded' }}</td>
+            <td><span class="status {{ scan.status|lower|replace(' ', '-') }}">{{ scan.status }}</span></td>
+            <td>{{ '%.2f s'|format(scan.duration_seconds) if scan.duration_seconds is not none else 'Not recorded' }}</td>
+            <td>{{ scan.finding_count }} <div class="muted small">{{ scan.approved_count }} approved</div></td>
+            <td><div class="history-actions">
+                <a class="history-button" href="{{ url_for('firewall_result', scan_id=scan.id) }}">View Results</a>
+            </div></td>
+        </tr>{% endfor %}</tbody>
+    </table></div>
+    {% else %}<p class="empty">No Firewall Detection scans recorded yet.</p>{% endif %}
+</section>
+{% endif %}
+
+{% if not history_full_module or history_full_module == 'unified' %}
+<section class="panel history-section">
+    <div class="panel-heading">
+        <div><h2>Unified Scan runs <span class="history-count">{{ unified_run_count }}</span></h2>
+        <p class="subtitle">Multi-target assessments across selected modules.</p></div>
+        <a class="history-button" href="{{ url_for('unified_scan_page') }}">New Unified Scan</a>
+        {% if not history_full_module and unified_run_count > 2 %}
+        <a class="history-button" href="{{ url_for('history_page', module_slug='unified' ) }}">View more</a>
+        {% endif %}
+    </div>
+    {% if unified_runs %}
+    <div class="table-wrap"><table>
+        <thead><tr><th>Run ID</th><th>Targets</th><th>Modules</th><th>Created (IST)</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody>{% for run in unified_runs %}
+        <tr><td>USR-{{ '%05d'|format(run.id) }}</td>
+            <td>{{ run.targets|length }}</td>
+            <td>{{ run.modules|join(', ') if run.modules else 'Not recorded' }}</td>
+            <td>{{ run.created_at|datetime if run.created_at else 'Not recorded' }}</td>
+            <td><span class="status {{ run.status|lower|replace(' ', '-') }}">{{ run.status }}</span></td>
+            <td><div class="history-actions">
+                <a class="history-button" href="{{ url_for('unified_scan_results', run_id=run.id) }}">View Results</a>
+                {% if run.status in ['Completed', 'Partial', 'Failed'] %}
+                <a class="history-button" href="{{ url_for('export_unified_scan_pdf', run_id=run.id) }}">Combined PDF</a>
+                {% endif %}
+            </div></td>
+        </tr>{% endfor %}</tbody>
+    </table></div>
+    {% else %}<p class="empty">No Unified Scan runs recorded yet.</p>{% endif %}
+</section>
+{% endif %}
+{% endif %}
+{% endblock %}

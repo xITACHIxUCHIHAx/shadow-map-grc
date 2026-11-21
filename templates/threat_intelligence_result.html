@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+
+{% block title %}Threat Intelligence Result | Shadow Map GRC{% endblock %}
+
+{% block header %}
+<h1>Threat Intelligence Result</h1>
+<p class="subtitle">Saved read-only public IP intelligence lookup.</p>
+{% endblock %}
+
+{% block content %}
+<div class="report-page">
+  <div class="result-history-nav">
+    <a class="button result-history-button" href="{{ url_for('history_page') }}" onclick="return shadowMapBackToHistory();">Back to Scan History</a>
+  </div>
+<section class="panel">
+  <div class="panel-heading">
+    <div class="intel-result-actions">
+      {% if record.status == "Completed" %}
+        <a class="button" href="{{ url_for('export_threat_intel_pdf', lookup_id=record.id) }}">Download PDF</a>
+      {% endif %}
+    </div>
+
+    <div>
+      <h2>{{ record.target }}</h2>
+      <p class="subtitle">Scan ID: THREAT INTEL #{{ record.id }} · Started {{ record.started_at|datetime }}</p>
+    </div>
+    {% if record.status == "Completed" %}
+      <span class="status">Completed</span>
+    {% else %}
+      <span class="batch-status">{{ record.status }}</span>
+    {% endif %}
+  </div>
+
+  <div class="module-grid">
+    <div class="module"><div><strong>Duration</strong><span>{% if record.duration_seconds is not none %}{{ "%.2f"|format(record.duration_seconds) }}s{% else %}—{% endif %}</span></div></div>
+    <div class="module"><div><strong>Finished</strong><span>{{ record.finished_at|datetime if record.finished_at else "—" }}</span></div></div>
+    <div class="module"><div><strong>Scan ID</strong><span>THREAT INTEL #{{ record.id }}</span></div></div>
+  </div>
+
+  {% if record.error %}
+    <div class="notice"><strong>Lookup error:</strong> {{ record.error }}</div>
+  {% endif %}
+</section>
+
+{% if result %}
+<section class="panel">
+  <div class="panel-heading">
+    <div>
+      <h2>InternetDB intelligence</h2>
+      <p class="subtitle">Public IP: {{ result.ip }}</p>
+    </div>
+    <span class="status">
+      {{ "Data returned" if result.found else "No InternetDB record found" }}
+    </span>
+  </div>
+
+  {% if result.found %}
+  <div class="module-grid">
+    <div class="module"><div><strong>Reported ports</strong><span>{{ result.ports|length }}</span></div></div>
+    <div class="module"><div><strong>Hostnames</strong><span>{{ result.hostnames|length }}</span></div></div>
+    <div class="module"><div><strong>Tags</strong><span>{{ result.tags|length }}</span></div></div>
+    <div class="module"><div><strong>Vulnerability IDs</strong><span>{{ result.vulns|length }}</span></div></div>
+  </div>
+
+  <h2>Reported ports</h2>
+  {% if result.ports %}
+    <ul>{% for item in result.ports %}<li>{{ item }}</li>{% endfor %}</ul>
+  {% else %}<p class="muted">No ports reported.</p>{% endif %}
+
+  <h2>Hostnames</h2>
+  {% if result.hostnames %}
+    <ul>{% for item in result.hostnames %}<li>{{ item }}</li>{% endfor %}</ul>
+  {% else %}<p class="muted">No hostnames reported.</p>{% endif %}
+
+  <h2>Tags</h2>
+  {% if result.tags %}
+    <ul>{% for item in result.tags %}<li>{{ item }}</li>{% endfor %}</ul>
+  {% else %}<p class="muted">No tags reported.</p>{% endif %}
+
+  <h2>Reported vulnerability identifiers</h2>
+  {% if result.vulns %}
+    <ul>{% for item in result.vulns %}<li>{{ item }}</li>{% endfor %}</ul>
+    <p class="muted">Verify each identifier against authoritative advisories and the asset's actual software and version.</p>
+  {% else %}<p class="muted">No vulnerability identifiers reported.</p>{% endif %}
+  {% else %}
+    <p class="muted">InternetDB returned no record for this IP address.</p>
+  {% endif %}
+</section>
+{% endif %}
+
+<div class="notice">
+  <strong>Interpretation:</strong> External intelligence can be incomplete or stale.
+  Reported ports and vulnerability identifiers do not confirm exploitable vulnerabilities.
+  No GRC findings or risks are created by this lookup.
+</div>
+
+</div>
+{% endblock %}

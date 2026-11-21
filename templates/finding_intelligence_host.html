@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}Host Report · {{ host }} | Shadow Map GRC{% endblock %}
+{% block header %}
+<h1>Host Report</h1>
+<p class="subtitle">{{ host }} · Consolidated findings for this IP address or website origin.</p>
+{% endblock %}
+{% block content %}
+<div class="report-page">
+
+
+<div class="hr-panel">
+  <div class="hr-grid">
+    <div class="hr-stat"><strong>{{ summary.total }}</strong><span>Total findings</span></div>
+    <div class="hr-stat"><strong>{{ summary.critical }}</strong><span>Critical</span></div>
+    <div class="hr-stat"><strong>{{ summary.high }}</strong><span>High</span></div>
+    <div class="hr-stat"><strong>{{ summary.medium }}</strong><span>Medium</span></div>
+    <div class="hr-stat"><strong>{{ summary.low }}</strong><span>Low</span></div>
+    <div class="hr-stat"><strong>{{ summary.review }}</strong><span>Review</span></div>
+    <div class="hr-stat"><strong>{{ summary.validated }}</strong><span>Evidence-supported</span></div>
+    <div class="hr-stat"><strong>{{ summary.unreviewed }}</strong><span>Unreviewed</span></div>
+    <div class="hr-stat"><strong>{{ summary.cve_candidates }}</strong><span>Findings with CVE references</span></div>
+    <div class="hr-stat"><strong>{{ summary.mitre_suggestions }}</strong><span>Automated MITRE suggestions</span></div>
+  </div>
+  <p class="hr-muted">CVE references are candidates, not confirmation. Automated MITRE suggestions and general classifications are distinct from analyst-confirmed mappings.</p>
+  <a class="hr-btn secondary" href="{{ url_for('automatic_risks.finding_intelligence_page') }}">← Host/IP Register</a>
+  <a class="hr-btn secondary" href="{{ url_for('automatic_risks.finding_intelligence_host_csv', host=host) }}">Full CSV</a>
+  <a class="hr-btn secondary" href="{{ url_for('automatic_risks.finding_intelligence_host_pdf', host=host) }}">Full PDF</a>
+</div>
+
+<section class="hr-panel">
+  <h2>Filter this host's findings</h2>
+  <form method="get" class="hr-form">
+    <div class="hr-field"><label>Search</label><input name="q" value="{{ filters.q }}" placeholder="Evidence, title, CVE, technique"></div>
+    <div class="hr-field"><label>Severity</label><select name="severity"><option value="">All severities</option>{% for value in severity_options %}<option value="{{ value }}" {% if filters.severity==value %}selected{% endif %}>{{ value }}</option>{% endfor %}</select></div>
+    <div class="hr-field"><label>Source</label><select name="source"><option value="">All sources</option>{% for value in source_options %}<option value="{{ value }}" {% if filters.source==value %}selected{% endif %}>{{ value }}</option>{% endfor %}</select></div>
+    <div class="hr-field"><label>Validation</label><select name="status"><option value="">All validation states</option>{% for value in status_options %}<option value="{{ value }}" {% if filters.status==value %}selected{% endif %}>{{ value }}</option>{% endfor %}</select></div>
+    <div class="hr-field"><label>Confidence</label><select name="confidence"><option value="">All confidence</option>{% for value in confidence_options %}<option value="{{ value }}" {% if filters.confidence==value %}selected{% endif %}>{{ value }}</option>{% endfor %}</select></div>
+    <div class="hr-field"><label>CVE contains</label><input name="cve" value="{{ filters.cve }}" placeholder="CVE-2024-..."></div>
+    <div class="hr-field"><label>OWASP contains</label><input name="owasp" value="{{ filters.owasp }}" placeholder="A05:2021"></div>
+    <div class="hr-field"><label>MITRE / category</label><input name="mitre" value="{{ filters.mitre }}" placeholder="T1190 or classification"></div>
+    <button class="hr-btn" type="submit">Apply filters</button>
+    <a class="hr-btn secondary" href="{{ url_for('automatic_risks.finding_intelligence_host_report', host=host) }}">Clear</a>
+  </form>
+  <div class="hr-report-actions">
+    <a class="hr-btn secondary" href="{{ url_for('automatic_risks.finding_intelligence_host_filtered_csv', host=host, **filters) }}">Filtered CSV</a>
+    <a class="hr-btn secondary" href="{{ url_for('automatic_risks.finding_intelligence_host_filtered_pdf', host=host, **filters) }}">Filtered PDF</a>
+    <span class="hr-muted">{{ findings|length }} matching findings</span>
+  </div>
+</section>
+
+<section class="hr-panel">
+  <h2>Findings</h2>
+  <div class="hr-table-wrap"><table class="hr-table">
+    <thead><tr><th>Finding</th><th>Source / Severity</th><th>Validation</th><th>CVE references</th><th>OWASP</th><th>MITRE / Classification</th><th>Review</th></tr></thead>
+    <tbody>
+    {% for finding in findings %}
+      <tr>
+        <td><strong>#{{ finding.id }} · {{ finding.title }}</strong><br><span class="hr-muted">{{ finding.target }}</span><br>{{ finding.description }}</td>
+        <td>{{ finding.source }}<br>{{ finding.suggested_severity }}</td>
+        <td>{{ finding.validation_status }}<br><span class="hr-muted">{{ finding.mapping_confidence }} mapping confidence</span></td>
+        <td>
+          <strong>{{ finding.auto_cve_ids or 'No automated candidate' }}</strong><br>
+          <span class="hr-muted">Automated (NVD keyword lead)</span>
+          {% if finding.local_cve_ids %}<br><span class="hr-muted">Local correlation: {{ finding.local_cve_ids }}{% if finding.local_cve_match_status %} ({{ finding.local_cve_match_status }}){% endif %}</span>{% endif %}
+          <br>{{ finding.cve_ids or 'No analyst CVE' }}
+          {% if finding.hexbrain_summary %}
+            <div style="margin-top: 8px; padding-top: 8px; border-top: 1px dashed #ccc;">
+              <span class="hr-muted" style="font-weight: bold;">HexBrain Intel:</span><br>
+              <span style="font-size: 0.9em;">{{ finding.hexbrain_summary }}</span>
+              {% if finding.hexbrain_testing_context and finding.hexbrain_testing_context != '[]' %}
+                <br><span class="hr-muted" style="font-size: 0.8em;">Testing: {{ finding.hexbrain_testing_context[:100] }}...</span>
+              {% endif %}
+            </div>
+          {% endif %}
+        </td>
+        <td>{{ finding.auto_owasp_category or 'No automated suggestion' }}{% if finding.local_owasp_category %}<br><span class="hr-muted">Local: {{ finding.local_owasp_category }}</span>{% endif %}<br><span class="hr-muted">Analyst: {{ finding.owasp_category or 'Not mapped' }}</span></td>
+        <td>
+          <span class="hr-muted">Automated:</span>
+          {{ finding.auto_mitre_technique or 'No ATT&CK technique' }}
+          {% if finding.auto_security_category %}<br>{{ finding.auto_security_category }}{% endif %}
+          <br><span class="hr-muted">Analyst: {{ finding.mitre_technique or 'Not mapped' }}</span>
+          {% if finding.auto_mitre_rationale %}<br><span class="hr-muted">{{ finding.auto_mitre_rationale }}</span>{% endif %}
+        </td>
+        <td><a class="action-button" href="{{ url_for('automatic_risks.finding_intelligence_host_report', host=host, finding=finding.id, **filters) }}">Review finding</a></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="7">No findings match these filters.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</section>
+
+{% if selected %}
+<section class="hr-panel" id="analyst-review">
+  <h2>Analyst review · Finding #{{ selected.id }}</h2>
+  <p><strong>{{ selected.title }}</strong> · {{ selected.target }}</p>
+  <form method="post" action="{{ url_for('automatic_risks.finding_intelligence_page') }}" class="hr-review">
+    <input type="hidden" name="finding_id" value="{{ selected.id }}">
+    <input type="hidden" name="return_host" value="{{ host }}">
+    <div class="hr-field wide"><label>Analyst CVE IDs</label><input name="cve_ids" value="{{ selected.cve_ids }}" placeholder="CVE-2024-12345"></div>
+    <div class="hr-field wide"><label>Analyst OWASP mapping</label><input name="owasp_category" value="{{ selected.owasp_category }}"></div>
+    <div class="hr-field"><label>MITRE tactic</label><input name="mitre_tactic" value="{{ selected.mitre_tactic }}"></div>
+    <div class="hr-field"><label>MITRE technique ID</label><input name="mitre_technique" value="{{ selected.mitre_technique }}" placeholder="T1110"></div>
+    <div class="hr-field"><label>Mapping confidence</label><select name="mapping_confidence">{% for value in confidence_options %}<option value="{{ value }}" {% if selected.mapping_confidence==value %}selected{% endif %}>{{ value }}</option>{% endfor %}</select></div>
+    <div class="hr-field"><label>Validation status</label><select name="validation_status">{% for value in status_options %}<option value="{{ value }}" {% if selected.validation_status==value %}selected{% endif %}>{{ value }}</option>{% endfor %}</select></div>
+    <div class="hr-field wide"><label>Analyst rationale</label><textarea name="mapping_rationale">{{ selected.mapping_rationale }}</textarea></div>
+    <div class="hr-field wide"><label>Supporting source URL</label><input name="source_reference" type="url" value="{{ selected.source_reference }}" placeholder="https://..."></div>
+    <div class="wide"><button class="hr-btn" type="submit">Save analyst review</button></div>
+  </form>
+</section>
+{% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% block title %}Web Security Batch Results | Shadow Map GRC{% endblock %}
+
+{% block header %}
+<h1>Web Security Batch Results</h1>
+<p class="subtitle">Independent HTTPS assessment outcomes for every submitted target.</p>
+{% endblock %}
+
+{% block content %}
+<div class="report-page">
+
+
+<section class="batch-hero">
+  <div class="batch-kicker">Web Security batch · #{{ batch.id }}</div>
+  <h2>{{ batch.status }} — {{ batch.total_targets }} target(s)</h2>
+  <p class="subtitle">HTTPS header assessment · Started: {{ batch.created_at|datetime }}</p>
+  <div class="batch-stats">
+    <div class="batch-stat"><span>Total targets</span><strong>{{ batch.total_targets }}</strong></div>
+    <div class="batch-stat completed"><span>Completed</span><strong>{{ batch.completed_targets }}</strong></div>
+    <div class="batch-stat partial"><span>Partial</span><strong>{{ batch.partial_targets }}</strong></div>
+    <div class="batch-stat failed"><span>Failed</span><strong>{{ batch.failed_targets }}</strong></div>
+  </div>
+</section>
+
+<div class="batch-actions">
+  <a class="button" href="{{ url_for('unified_scan_page') }}">＋ New Unified Scan</a>
+</div>
+
+<section class="panel">
+  <div class="panel-heading">
+    <div>
+      <h2>Target results</h2>
+      <p class="subtitle">Each website is validated, checked and recorded independently.</p>
+    </div>
+    <span class="batch-status">{{ items|length }} items</span>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>#</th><th>Target</th><th>Status</th><th>Duration</th><th>Result</th><th>Details</th></tr>
+      </thead>
+      <tbody>
+        {% for item in items %}
+        <tr>
+          <td>{{ item.position }}</td>
+          <td><strong>{{ item.target }}</strong></td>
+          <td>
+            {% if item.status == "Completed" %}
+              <span class="status completed">Completed</span>
+            {% elif item.status == "Partial" %}
+              <span class="status partial">Partial</span>
+            {% else %}
+              <span class="status failed">Failed</span>
+            {% endif %}
+            {% if item.error %}<div class="batch-error small">{{ item.error }}</div>{% endif %}
+          </td>
+          <td>{% if item.duration_seconds is not none %}{{ "%.2f"|format(item.duration_seconds) }}s{% else %}—{% endif %}</td>
+          <td>{% if item.result_type == "web_security" and item.result_record_id %}Web Security #{{ item.result_record_id }}{% else %}No result record{% endif %}</td>
+          <td>
+            {% if item.result_type == "web_security" and item.result_record_id %}
+              <a class="action-button" href="{{ url_for('web_security_result', scan_id=item.result_record_id) }}">View result →</a>
+            {% else %}
+              <span class="muted">No result page</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6">No targets were recorded for this batch.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+</div>
+{% endblock %}

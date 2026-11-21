@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block title %}HexBrain API | Shadow Map GRC{% endblock %}
+
+{% block content %}
+<h1>HexBrain API</h1>
+<p class="muted">Configure the API key for automatic HexBrain enrichment of CVE findings. The key is stored securely in your OS credential store and is never displayed.</p>
+
+{% if error %}
+<div class="alert alert-error">{{ error }}</div>
+{% endif %}
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% for category, message in messages %}
+    <div class="alert alert-{{ category }}">{{ message }}</div>
+  {% endfor %}
+{% endwith %}
+
+<section class="card">
+    <form method="post" action="{{ url_for('hexbrain_api_page') }}">
+        <label class="form-label" for="hexbrain-api-key">HexBrain API Key</label>
+        <input
+            id="hexbrain-api-key"
+            name="api_key"
+            type="password"
+            class="form-control"
+            autocomplete="new-password"
+            placeholder="{% if key_configured %}Key configured — enter a new key to replace it{% else %}Enter your HexBrain API key{% endif %}"
+        >
+        <p class="muted small">
+            {% if key_configured %}
+                A HexBrain API key is configured and ready for background enrichment.
+            {% else %}
+                No API key is currently configured.
+            {% endif %}
+            You can also set the <code>SHADOW_MAP_HEXBRAIN_API_KEY</code> environment variable.
+        </p>
+
+        <div class="button-row">
+            <button class="button" type="submit" name="action" value="save">
+                Save Key
+            </button>
+            <button class="button" type="submit" name="action" value="test">
+                Test Connection
+            </button>
+        </div>
+    </form>
+</section>
+
+<section class="card" style="margin-top: 20px;">
+    <h2>Background Worker Status</h2>
+    <table class="table">
+        <tr>
+            <th>Last Attempt:</th>
+            <td>{{ sync_status.last_checked }}</td>
+        </tr>
+        <tr>
+            <th>Status:</th>
+            <td>
+                {% if sync_status.status == 'Success' %}
+                    <span class="badge badge-success">Success</span>
+                {% elif sync_status.status == 'Disabled' %}
+                    <span class="badge badge-warning">Disabled (No Key)</span>
+                {% elif sync_status.status == 'Failed' %}
+                    <span class="badge badge-danger">Failed</span>
+                {% else %}
+                    <span class="badge badge-neutral">{{ sync_status.status }}</span>
+                {% endif %}
+            </td>
+        </tr>
+    </table>
+</section>
+{% endblock %}

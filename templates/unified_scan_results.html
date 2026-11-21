@@ -1,0 +1,431 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<style>
+.unified-progress-indeterminate {
+  overflow: hidden;
+}
+.unified-progress-indeterminate .unified-progress-fill {
+  width: 34%;
+  animation: unified-progress-indeterminate 1.5s ease-in-out infinite;
+}
+@keyframes unified-progress-indeterminate {
+  0% { transform: translateX(-110%); }
+  100% { transform: translateX(310%); }
+}
+#zap-stop-btn[hidden] {
+  display: none !important;
+}
+.unified-live-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+</style>
+
+
+
+
+<div class="unified-results-wrap report-page"
+     id="unified-results"
+     data-progress-url="{{ url_for('unified_scan_live_progress', run_id=run.id) }}">
+
+  <div class="result-history-nav">
+    <a class="button result-history-button" href="{{ url_for('history_page') }}" onclick="return shadowMapBackToHistory();">Back to Scan History</a>
+  </div>
+
+  <section class="unified-results-hero">
+    <div class="unified-results-kicker">Unified assessment workspace</div>
+    <h1>Assessment run #{{ run.id }}</h1>
+    <p>Your selected modules are processed as independent assessment batches.</p>
+    <div class="unified-results-status-wrap">
+      <span class="unified-status {{ run.status|lower }}" id="unified-run-status">{{ run.status }}</span>
+    </div>
+    {% if run.status in ['Completed', 'Partial', 'Failed'] and batches %}
+      <div class="unified-results-actions">
+        <a class="button" href="{{ url_for('export_unified_scan_pdf', run_id=run.id) }}">
+          Download combined PDF
+        </a>
+      </div>
+    {% endif %}
+  </section>
+
+  <div class="unified-results-grid">
+    <div class="unified-results-stat">
+      <span>Targets submitted</span>
+      <strong>{{ targets|length }}</strong>
+    </div>
+    <div class="unified-results-stat">
+      <span>Modules selected</span>
+      <strong>{{ modules|length }}</strong>
+    </div>
+    <div class="unified-results-stat">
+      <span>Module batches created</span>
+      <strong id="unified-batch-count">{{ batches|length }}</strong>
+    </div>
+  </div>
+
+  <section class="unified-results-section">
+    <div class="unified-live-summary">
+      <div>
+        <h2 class="unified-live-heading">Live assessment progress</h2>
+        <p id="unified-live-message">Connecting to the assessment worker...</p>
+      </div>
+      <div class="unified-live-controls">
+        <button type="button" id="zap-stop-btn" class="zap-stop-btn" hidden>
+          ■ &nbsp;Stop all ZAP scans
+        </button>
+        <span class="unified-live-indicator" id="unified-live-indicator">
+          <span class="unified-live-dot"></span>
+          LIVE
+        </span>
+      </div>
+    </div>
+    <div id="unified-progress-container" aria-live="polite">
+      <p class="unified-progress-empty">Loading target progress...</p>
+    </div>
+  </section>
+
+  <section class="unified-results-section">
+    <h2>Submitted targets</h2>
+    <div class="unified-target-list">
+      {% for target in targets %}
+        <span class="unified-target-chip">{{ target }}</span>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="unified-results-section">
+    <h2>Module results</h2>
+    <div id="unified-module-results">
+      {% for batch in batches %}
+        {% if batch.module == 'nmap' %}
+          {% set module_name = 'Nmap' %}
+          {% set result_url = url_for('nmap_batch_results', batch_id=batch.id) %}
+        {% elif batch.module == 'web_security' %}
+          {% set module_name = 'Web Security' %}
+          {% set result_url = url_for('web_security_batch_results', batch_id=batch.id) %}
+        {% elif batch.module == 'threat_intel' %}
+          {% set module_name = 'Threat Intelligence' %}
+          {% set result_url = url_for('threat_intel_batch_results', batch_id=batch.id) %}
+        {% elif batch.module == 'firewall' %}
+          {% set module_name = 'Firewall Detection' %}
+          {% set result_url = url_for('firewall_batch_results', batch_id=batch.id) %}
+        {% elif batch.module == 'zap' %}
+          {% set module_name = 'OWASP ZAP' %}
+          {% set result_url = url_for('zap_batch_results', batch_id=batch.id) %}
+        {% else %}
+          {% set module_name = batch.module|title %}
+          {% set result_url = '#' %}
+        {% endif %}
+
+        <div class="unified-module-card">
+          <div>
+            <h3>{{ module_name }}</h3>
+            <p>
+              {{ batch.total_targets }} targets ·
+              {{ batch.completed_targets }} completed ·
+              {{ batch.partial_targets }} partial ·
+              {{ batch.failed_targets }} failed ·
+              {{ batch.skipped_targets }} skipped
+            </p>
+            <span class="unified-status {{ batch.status|lower }}">{{ batch.status }}</span>
+          </div>
+          <a class="button unified-module-link" href="{{ result_url }}">View {{ module_name }} results →</a>
+        </div>
+      {% else %}
+        <p class="small muted">Module batches are being created...</p>
+      {% endfor %}
+    </div>
+    <h2 class="unified-individual-reports-heading">Individual target reports</h2>
+    {% for item in batch_items %}
+      {% set status = item.status|lower %}
+      {% if item.result_record_id and (
+          (item.module == 'nmap' and status in ['completed', 'partial']) or
+          (item.module in ['web_security', 'threat_intel', 'firewall'] and status == 'completed')
+      ) %}
+        {% if item.module == 'nmap' %}
+          {% set result_url = url_for('export_nmap_pdf', scan_id=item.result_record_id) %}
+          {% set module_name = 'Nmap' %}
+          {% set result_action = 'Download PDF' %}
+        {% elif item.module == 'web_security' %}
+          {% set result_url = url_for('export_web_security_pdf', scan_id=item.result_record_id) %}
+          {% set module_name = 'Web Security' %}
+          {% set result_action = 'Download PDF' %}
+        {% elif item.module == 'threat_intel' %}
+          {% set result_url = url_for('export_threat_intel_pdf', lookup_id=item.result_record_id) %}
+          {% set module_name = 'Threat Intelligence' %}
+          {% set result_action = 'Download PDF' %}
+        {% else %}
+          {% set result_url = url_for('firewall_result', scan_id=item.result_record_id) %}
+          {% set module_name = 'Firewall Detection' %}
+          {% set result_action = 'View Result' %}
+        {% endif %}
+        <div class="unified-module-card">
+          <div>
+            <h3>{{ module_name }} · {{ item.target }}</h3>
+            <p>Target {{ item.position }} · {{ item.status }} · {{ item.duration_seconds or 0 }} seconds</p>
+          </div>
+          <a class="button unified-module-link" href="{{ result_url }}">{{ result_action }} →</a>
+        </div>
+      {% elif status == 'skipped' %}
+        {% if item.module == 'web_security' %}
+          {% set module_name = 'Web Security' %}
+        {% elif item.module == 'nmap' %}
+          {% set module_name = 'Nmap' %}
+        {% elif item.module == 'threat_intel' %}
+          {% set module_name = 'Threat Intelligence' %}
+        {% elif item.module == 'firewall' %}
+          {% set module_name = 'Firewall Detection' %}
+        {% else %}
+          {% set module_name = item.module|title %}
+        {% endif %}
+        <div class="unified-module-card">
+          <div>
+            <h3>{{ module_name }} · {{ item.target }}</h3>
+            <p>Target {{ item.position }} · Skipped</p>
+            <p>{{ item.error or 'This assessment was skipped.' }}</p>
+          </div>
+          <span class="unified-status skipped">Skipped</span>
+        </div>
+      {% endif %}
+    {% else %}
+      <p class="small muted">Individual reports will appear when saved scan results are available.</p>
+    {% endfor %}
+  </section>
+
+  <div class="unified-results-actions">
+
+    <a class="button button-secondary" href="{{ url_for('nmap_page') }}">Open assessment workspace</a>
+  </div>
+</div>
+
+<script>
+(() => {
+  const root = document.getElementById("unified-results");
+  if (!root) return;
+
+  const progressUrl = root.dataset.progressUrl;
+  const progressContainer = document.getElementById("unified-progress-container");
+  const runStatus = document.getElementById("unified-run-status");
+  const liveMessage = document.getElementById("unified-live-message");
+  const liveIndicator = document.getElementById("unified-live-indicator");
+  const moduleResults = document.getElementById("unified-module-results");
+  const batchCount = document.getElementById("unified-batch-count");
+  const zapStopButton = document.getElementById("zap-stop-btn");
+
+  const moduleNames = {
+    nmap: "Nmap",
+    web_security: "Web Security",
+    threat_intel: "Threat Intelligence",
+    firewall: "Firewall Detection",
+    zap: "OWASP ZAP"
+  };
+
+  const resultEndpoints = {
+    nmap: "/nmap/batches/",
+    web_security: "/web-security/batches/",
+    threat_intel: "/threat-intelligence/batches/",
+    firewall: "/firewall/batches/",
+    zap: "/zap/batches/"
+  };
+
+  const terminalStates = new Set(["Completed", "Partial", "Failed", "Skipped"]);
+  let stopped = false;
+  let busy = false;
+  let firstLoad = true;
+
+  function escapeHtml(value) {
+    return String(value ?? "").replace(/[&<>"']/g, char => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;"
+    })[char]);
+  }
+
+  function renderProgress(rows) {
+    if (!Array.isArray(rows) || rows.length === 0) {
+      progressContainer.innerHTML =
+        '<p class="unified-progress-empty">Waiting for target progress records...</p>';
+      return;
+    }
+
+    const groups = new Map();
+    rows.forEach(row => {
+      if (!groups.has(row.module)) groups.set(row.module, []);
+      groups.get(row.module).push(row);
+    });
+
+    let html = "";
+    groups.forEach((items, module) => {
+      html += `<div class="unified-progress-group">
+        <h3>${escapeHtml(moduleNames[module] || module)}</h3>`;
+
+      items.forEach(item => {
+        const percent = typeof item.percent === "number" &&
+          Number.isFinite(item.percent)
+          ? Math.max(0, Math.min(100, item.percent))
+          : null;
+
+        html += `<div class="unified-progress-row">
+          <div class="unified-progress-top">
+            <span class="unified-progress-target">${escapeHtml(item.target)}</span>
+            <span class="unified-progress-task">${escapeHtml(item.task || "Queued")}</span>
+          </div>`;
+
+        const terminal = terminalStates.has(item.task);
+        const queued = item.task === "Queued";
+        if (percent !== null) {
+          html += `<div class="unified-progress-track"
+                       role="progressbar"
+                       aria-valuemin="0"
+                       aria-valuemax="100"
+                       aria-valuenow="${percent}">
+              <div class="unified-progress-fill" data-progress-width="${percent}"></div>
+            </div>
+            <div class="unified-progress-meta">
+              <span>${percent.toFixed(1)}% of the reported phase</span>
+            </div>`;
+        } else if (terminal || queued) {
+          html += `<div class="unified-progress-track"
+                       role="progressbar"
+                       aria-valuemin="0"
+                       aria-valuemax="100"
+                       aria-valuenow="0"
+                       aria-label="${escapeHtml(item.task || "No progress")}">
+              <div class="unified-progress-fill" data-progress-width="0"></div>
+            </div>`;
+        } else {
+          html += `<div class="unified-progress-track unified-progress-indeterminate"
+                       role="progressbar" aria-label="Progress not measurable for this phase">
+              <div class="unified-progress-fill"></div>
+            </div>`;
+        }
+
+        html += `</div>`;
+      });
+
+      html += `</div>`;
+    });
+
+    progressContainer.innerHTML = html;
+    progressContainer.querySelectorAll(".unified-progress-fill").forEach(fill => {
+      const width = Number(fill.dataset.progressWidth);
+      if (Number.isFinite(width)) {
+        fill.style.setProperty("--progress-width", `${Math.max(0, Math.min(100, width))}%`);
+      }
+    });
+  }
+
+  function renderBatches(batches) {
+    if (!Array.isArray(batches) || batches.length === 0) return;
+
+    batchCount.textContent = batches.length;
+    moduleResults.innerHTML = batches.map(batch => {
+      const name = moduleNames[batch.module] || batch.module;
+      const endpoint = resultEndpoints[batch.module];
+      const resultUrl = endpoint ? `${endpoint}${encodeURIComponent(batch.id)}` : "#";
+
+      return `<div class="unified-module-card">
+        <div>
+          <h3>${escapeHtml(name)}</h3>
+          <p>
+            ${Number(batch.total_targets) || 0} targets ·
+            ${Number(batch.completed_targets) || 0} completed ·
+            ${Number(batch.partial_targets) || 0} partial ·
+            ${Number(batch.failed_targets) || 0} failed ·
+            ${Number(batch.skipped_targets) || 0} skipped
+          </p>
+          <span class="unified-status ${String(batch.status || "").toLowerCase()}">${escapeHtml(batch.status)}</span>
+        </div>
+        <a class="button unified-module-link"
+           href="${resultUrl}">View ${escapeHtml(name)} results →</a>
+      </div>`;
+    }).join("");
+  }
+
+  async function refreshProgress() {
+    if (stopped || busy) return;
+    busy = true;
+
+    try {
+      const response = await fetch(progressUrl, {
+        method: "GET",
+        headers: {"Accept": "application/json"},
+        cache: "no-store",
+        credentials: "same-origin"
+      });
+
+      if (!response.ok) throw new Error(`Progress request failed (${response.status})`);
+
+      const data = await response.json();
+      runStatus.textContent = data.status || "Unknown";
+      runStatus.className = "unified-status " + String(data.status || "").toLowerCase();
+      renderProgress(data.progress);
+      renderBatches(data.batches);
+
+      const zapActive = (data.progress || []).some(item =>
+        item.module === "zap" && !terminalStates.has(item.task)
+      );
+      if (zapStopButton) zapStopButton.hidden = !zapActive;
+
+      if (terminalStates.has(data.status)) {
+        stopped = true;
+        liveMessage.textContent = `Assessment finished with status: ${data.status}.`;
+        liveIndicator.innerHTML = escapeHtml(data.status.toUpperCase());
+        liveIndicator.style.color = data.status === "Completed"
+          ? "#39d98a" : "#f0b45b";
+
+        // Fetch the final server-rendered results and links.
+        if (!firstLoad) window.location.reload();
+      } else {
+        const active = (data.progress || []).filter(item =>
+          !terminalStates.has(item.task)
+        ).length;
+        liveMessage.textContent =
+          `${active} target/module task(s) still active. Updates automatically.`;
+      }
+
+      firstLoad = false;
+    } catch (error) {
+      liveMessage.textContent =
+        "Live updates temporarily unavailable. Retrying...";
+      console.warn("Unified Scan progress polling:", error);
+    } finally {
+      busy = false;
+    }
+  }
+
+  if (zapStopButton) {
+    zapStopButton.addEventListener("click", async () => {
+      zapStopButton.disabled = true;
+      zapStopButton.textContent = "Stopping all ZAP scans…";
+      try {
+        const response = await fetch("/api/zap-stop", {
+          method: "POST",
+          credentials: "same-origin"
+        });
+        if (!response.ok) throw new Error("ZAP stop request failed");
+        zapStopButton.textContent = "Stop requested";
+      } catch (error) {
+        zapStopButton.textContent = "Stop all ZAP scans";
+        zapStopButton.disabled = false;
+      }
+    });
+  }
+
+  refreshProgress();
+  const pollTimer = window.setInterval(() => {
+    if (stopped) {
+      window.clearInterval(pollTimer);
+      return;
+    }
+    refreshProgress();
+  }, 1500);
+})();
+</script>
+
+{% endblock %}

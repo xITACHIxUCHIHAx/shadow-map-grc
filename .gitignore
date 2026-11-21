@@ -1,0 +1,51 @@
+venv/
+__pycache__/
+*.py[cod]
+.env
+.env.*
+!.env.example
+data/*.db
+data/*.db-journal
+data/*.db-wal
+data/*.db-shm
+
+# Local development backups and test artifacts
+backups/
+*.backup
+*.backup-*
+*.bak
+*.before-*
+*.before_*
+data/shadow_map_test_*.db
+
+# Local environments
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Local databases and assessment data
+data/*
+!data/.gitkeep
+*.db
+*.sqlite
+*.sqlite3
+
+# Backups and logs
+*.backup
+*.backup-*
+*.bak
+*.old
+*.before-*
+*.log
+backups/
+backup/
+
+*.bak*
+*.backup*
+*.tmp

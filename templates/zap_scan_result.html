@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+
+{% block title %}OWASP ZAP Results | Shadow Map GRC{% endblock %}
+
+{% block header %}
+<h1>OWASP ZAP Results</h1>
+<p class="subtitle">Saved active-scan evidence and alerts for {{ record.target }}.</p>
+{% endblock %}
+
+{% block content %}
+<div class="report-page">
+  <div class="result-history-nav">
+    <a class="button result-history-button" href="{{ url_for('history_page') }}" onclick="return shadowMapBackToHistory();">Back to Scan History</a>
+  </div>
+<section class="panel history-section">
+    <div class="panel-heading">
+        <div>
+            <h2>ZAP scan #{{ record.id }}</h2>
+            <p class="subtitle">{{ record.target }}</p>
+        </div>
+        <span class="status">{{ record.status }}</span>
+    </div>
+
+    <div class="table-wrap">
+        <table>
+            <tbody>
+                <tr><th>Target</th><td class="history-target">{{ record.target }}</td></tr>
+                <tr><th>Started</th><td>{{ record.started_at|datetime if record.started_at else 'Not recorded' }}</td></tr>
+                <tr><th>Finished</th><td>{{ record.finished_at|datetime if record.finished_at else 'Not recorded' }}</td></tr>
+                <tr><th>Duration</th><td>{{ '%.2f seconds'|format(record.duration_seconds) if record.duration_seconds is not none else 'Not recorded' }}</td></tr>
+                <tr><th>Alerts saved</th><td>{{ alerts|length }}</td></tr>
+                <tr><th>Spider scan ID</th><td>{{ result.get('spider_scan_id', 'Not recorded') }}</td></tr>
+                <tr><th>Active scan ID</th><td>{{ result.get('active_scan_id', 'Not recorded') }}</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    {% if record.error %}
+    <p class="empty">Scan error: {{ record.error }}</p>
+    {% endif %}
+
+    {% if result.get('alerts_error') %}
+    <p class="empty">Alert retrieval warning: {{ result.get('alerts_error') }}</p>
+    {% endif %}
+</section>
+
+<section class="panel history-section">
+    <div class="panel-heading">
+        <div>
+            <h2>Alert evidence <span class="history-count">{{ alerts|length }}</span></h2>
+            <p class="subtitle">Alerts captured from the saved ZAP scan result.</p>
+        </div>
+        <a class="history-button" href="{{ url_for('zap_proxy_page') }}">Open ZAP Proxy</a>
+        <a class="history-button" href="{{ url_for('zap_scan_export_pdf', scan_id=record.id) }}">Download PDF</a>
+        <a class="history-button" href="{{ url_for('zap_scan_export_csv', scan_id=record.id) }}">Download CSV</a>
+    </div>
+
+    {% if alerts %}
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Alert</th>
+                    <th>Risk</th>
+                    <th>Confidence</th>
+                    <th>URL</th>
+                    <th>Description</th>
+                    <th>Solution</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for alert in alerts %}
+                <tr>
+                    <td>
+                        <strong>{{ alert.get('name', 'Unnamed alert') }}</strong>
+                        {% if alert.get('pluginId') %}
+                        <div class="muted small">Plugin {{ alert.get('pluginId') }}</div>
+                        {% endif %}
+                    </td>
+                    <td>{{ alert.get('risk', 'Not recorded') }}</td>
+                    <td>{{ alert.get('confidence', 'Not recorded') }}</td>
+                    <td class="history-target">{{ alert.get('url', 'Not recorded') }}</td>
+                    <td>{{ alert.get('description', 'No description supplied.') }}</td>
+                    <td>{{ alert.get('solution', 'No solution supplied.') }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="empty">No alerts were saved for this scan.</p>
+    {% endif %}
+</section>
+
+</div>
+{% endblock %}

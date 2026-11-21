@@ -1,0 +1,229 @@
+{% extends "base.html" %}
+
+{% block title %}Combined Findings | Shadow Map GRC{% endblock %}
+
+{% block header %}
+<h1>Combined Findings</h1>
+<p class="subtitle">A unified view of saved security observations from available scanners.</p>
+{% endblock %}
+
+{% block content %}
+
+
+<div class="cf-stats">
+  <div class="cf-stat">
+    <div class="cf-muted">ALL OBSERVATIONS</div>
+    <div class="cf-number">{{ total_count }}</div>
+  </div>
+  <div class="cf-stat">
+    <div class="cf-muted">NMAP</div>
+    <div class="cf-number">{{ source_counts.get('nmap', 0) }}</div>
+  </div>
+  <div class="cf-stat">
+    <div class="cf-muted">WEB SECURITY</div>
+    <div class="cf-number">{{ source_counts.get('web_security', 0) }}</div>
+  </div>
+  <div class="cf-stat">
+    <div class="cf-muted">DRAFTS TO REVIEW</div>
+    <div class="cf-number">{{ status_counts.get('Draft', 0) }}</div>
+  </div>
+</div>
+
+<section class="panel">
+  <div class="panel-heading">
+    <div>
+      <h2>Filter observations</h2>
+      <p class="subtitle">Filters change the displayed list, not the stored records.</p>
+    </div>
+  </div>
+  <form method="get" action="{{ url_for('combined_findings_page') }}" class="cf-filters">
+    <div>
+      <label for="cf-search">Search target or finding title</label>
+      <input id="cf-search" name="q" type="search"
+             value="{{ search_query }}"
+             placeholder="e.g. example.com or missing header"
+             maxlength="200"
+             class="cf-search-input">
+    </div>
+    <div class="cf-target-picker">
+      <label for="cf-target-search">Choose saved hosts / IPs</label>
+      <input id="cf-target-search" type="search"
+             placeholder="Search saved targets..."
+             autocomplete="off"
+             class="cf-target-search-input">
+      <div class="cf-target-actions">
+        <button class="button" type="button" id="cf-select-visible">Select visible</button>
+        <button class="link-button" type="button" id="cf-clear-targets">Clear selection</button>
+        <span class="cf-muted">{{ available_targets|length }} saved target(s)</span>
+      </div>
+      <div class="cf-target-list" id="cf-target-list">
+        {% for target in available_targets %}
+          <label class="cf-target-option" data-target="{{ target|lower }}">
+            <input type="checkbox" name="host" value="{{ target }}"
+                   {% if target in selected_hosts %}checked{% endif %}>
+            <span>{{ target }}</span>
+          </label>
+        {% else %}
+          <p class="cf-muted">No saved targets found yet. Complete a scan first.</p>
+        {% endfor %}
+      </div>
+      <p class="cf-muted">Select one or more targets. Leave all unchecked to show all targets.</p>
+    </div>
+    <div>
+      <label for="cf-source">Scanner source</label>
+      <select id="cf-source" name="source">
+        <option value="all" {% if selected_source == 'all' %}selected{% endif %}>All sources</option>
+        <option value="nmap" {% if selected_source == 'nmap' %}selected{% endif %}>Nmap</option>
+        <option value="web_security" {% if selected_source == 'web_security' %}selected{% endif %}>Web Security</option>
+        <option value="threat_intel" {% if selected_source == 'threat_intel' %}selected{% endif %}>Threat Intelligence</option>
+        <option value="firewall" {% if selected_source == 'firewall' %}selected{% endif %}>Firewall Detection</option>
+      </select>
+    </div>
+    <div>
+      <label for="cf-scan-id">Scan ID</label>
+      <select id="cf-scan-id" name="scan_id">
+        <option value="">All scan runs</option>
+        {% for scan in available_scans %}
+          <option value="{{ scan.source }}:{{ scan.source_record_id }}"
+            {% if scan_filter == scan.source ~ ':' ~ scan.source_record_id|string %}selected{% endif %}>
+            {{ scan.source|replace('_', ' ')|title }} #{{ scan.source_record_id }} · {{ scan.target }} · {{ scan.status }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label for="cf-status">Review status</label>
+      <select id="cf-status" name="status">
+        <option value="all" {% if selected_status == 'all' %}selected{% endif %}>All statuses</option>
+        <option value="Draft" {% if selected_status == 'Draft' %}selected{% endif %}>Draft ({{ status_counts.get('Draft', 0) }})</option>
+        <option value="Approved" {% if selected_status == 'Approved' %}selected{% endif %}>Approved ({{ status_counts.get('Approved', 0) }})</option>
+        <option value="Dismissed" {% if selected_status == 'Dismissed' %}selected{% endif %}>Dismissed ({{ status_counts.get('Dismissed', 0) }})</option>
+      </select>
+    </div>
+    <button class="button" type="submit">Apply filters</button>
+    <a class="link-button" href="{{ url_for('combined_findings_page') }}">Clear filters</a>
+  </form>
+</section>
+
+<p class="cf-muted">Showing {{ findings|length }} matching observation(s). Approved means accepted into the review workflow; it does not prove a vulnerability or establish ISO compliance.</p>
+
+{% if findings %}
+  {% for finding in findings %}
+  {% set source_scan_status = scan_statuses.get((finding.source, finding.source_record_id)) if finding.source_record_id else None %}
+  <article class="cf-card">
+    <div class="cf-muted">
+      #{{ finding.id }} · {{ finding.source|upper }}{% if finding.source_record_id %} #{{ finding.source_record_id }}{% else %} · Unlinked scan{% endif %} · {{ finding.target or 'Target not recorded' }} · {{ finding.created_at|datetime }}
+      · <span class="cf-status">{{ finding.status }}</span>
+      {% if source_scan_status %} · Scan: {{ source_scan_status }}{% endif %}
+    </div>
+    <h2>{{ finding.title }}</h2>
+    <p class="cf-description">{{ finding.description }}</p>
+    <p>
+      <strong>Suggested severity:</strong> {{ finding.suggested_severity or 'Not assessed' }}
+      &nbsp; <strong>Confidence:</strong> {{ finding.confidence or 'Not assessed' }}
+    </p>
+    <p><strong>Recommended next step:</strong> {{ finding.recommendation or 'Manual review required.' }}</p>
+    <p><strong>ISO control suggestions:</strong> {{ finding.iso_controls or 'Not mapped' }}</p>
+    <div class="cf-evidence"><strong>Evidence</strong>
+{{ finding.evidence or 'No evidence recorded.' }}</div>
+    {% if finding.risk_id %}
+      <p><strong>Linked risk-register record:</strong> #{{ finding.risk_id }}</p>
+    {% endif %}
+    <div class="cf-links">
+      <a class="action-button" href="{{ url_for('automatic_risks.findings_page', status=finding.status) }}#finding-{{ finding.id }}">Open in Findings Review</a>
+      {% if finding.status == 'Approved' %}
+        <a class="action-button" href="{{ url_for('risk_register_page') }}">Open Risk Register</a>
+      {% endif %}
+    </div>
+  </article>
+  {% endfor %}
+{% else %}
+  <section class="cf-empty">
+    <h2>No observations match these filters</h2>
+    <p>Try selecting another source or status. Changing filters does not delete any observations.</p>
+  </section>
+{% endif %}
+
+
+{% if matching_count > 0 %}
+<nav id="combined-findings-pagination"
+     class="trace-pagination"
+     aria-label="Combined findings pages">
+  <span>
+    Showing {{ (current_page - 1) * per_page + 1 }}–{{ [current_page * per_page, matching_count]|min }}
+    of {{ matching_count }} findings
+  </span>
+  {% if current_page > 1 %}
+    <a class="button" href="{{ url_for('combined_findings_page',
+      source=selected_source, status=selected_status, q=search_query,
+      scan_id=scan_filter, host=selected_hosts,
+      page=current_page - 1) }}#combined-findings-pagination">Previous</a>
+  {% endif %}
+  <span>Page {{ current_page }} of {{ page_count }}</span>
+  {% if current_page < page_count %}
+    <a class="button" href="{{ url_for('combined_findings_page',
+      source=selected_source, status=selected_status, q=search_query,
+      scan_id=scan_filter, host=selected_hosts,
+      page=current_page + 1) }}#combined-findings-pagination">Next</a>
+  {% endif %}
+</nav>
+{% endif %}
+
+<div class="notice">
+  Nmap open ports and missing HTTP security headers are observations, not confirmed vulnerabilities. Review evidence, business context, and applicability before making risk or compliance decisions.
+</div>
+
+<script>
+(() => {
+  const search = document.getElementById("cf-target-search");
+  const list = document.getElementById("cf-target-list");
+  const selectVisible = document.getElementById("cf-select-visible");
+  const clearTargets = document.getElementById("cf-clear-targets");
+  if (!search || !list || !selectVisible || !clearTargets) return;
+
+  const options = Array.from(list.querySelectorAll(".cf-target-option"));
+
+  search.addEventListener("input", () => {
+    const query = search.value.trim().toLowerCase();
+    options.forEach(option => {
+      option.hidden = !option.dataset.target.includes(query);
+    });
+  });
+
+  selectVisible.addEventListener("click", () => {
+    options.forEach(option => {
+      if (!option.hidden) {
+        const checkbox = option.querySelector('input[type="checkbox"]');
+        if (checkbox) checkbox.checked = true;
+      }
+    });
+  });
+
+  clearTargets.addEventListener("click", () => {
+    options.forEach(option => {
+      const checkbox = option.querySelector('input[type="checkbox"]');
+      if (checkbox) checkbox.checked = false;
+    });
+  });
+})();
+</script>
+
+
+<script id="combined-findings-pagination-scroll">
+(() => {
+  window.addEventListener("load", () => {
+    if (location.hash !== "#combined-findings-pagination") return;
+
+    const area = document.querySelector(".page-scroll-area");
+    const target = document.getElementById("combined-findings-pagination");
+    if (!area || !target) return;
+
+    requestAnimationFrame(() => {
+      area.scrollTop += target.getBoundingClientRect().top
+        - area.getBoundingClientRect().top;
+    });
+  });
+})();
+</script>
+
+{% endblock %}

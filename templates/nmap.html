@@ -1,0 +1,309 @@
+{% extends "base.html" %}
+
+{% block title %}Nmap Scanner | Shadow Map GRC{% endblock %}
+
+{% block header %}
+<h1>Nmap Scanner</h1>
+<p class="subtitle">Network discovery, TCP port analysis and service identification.</p>
+{% endblock %}
+
+{% block content %}
+
+
+{% if not result %}
+<section class="nmap-hero">
+  <div class="nmap-hero-inner">
+    <div>
+      <div class="nmap-kicker">Network assessment workspace</div>
+      <h2>Map the exposed attack surface.</h2>
+      <p>Run an authorized TCP scan, review detected port states and inspect service information. Results are saved in your local Shadow Map GRC history.</p>
+      <span class="nmap-tag">TCP SCANNING</span>
+      <span class="nmap-tag">LOCAL RESULTS</span>
+    </div>
+    <div class="nmap-hero-mark" aria-hidden="true">⌁</div>
+  </div>
+</section>
+
+<div class="nmap-layout">
+  <section>
+{% include "_unified_scan_form.html" %}
+
+  </section>
+
+  <aside>
+    <section class="panel">
+      <div class="panel-heading">
+        <div>
+          <h2>Scan profiles</h2>
+          <p class="subtitle">Choose coverage to match your task.</p>
+        </div>
+      </div>
+      <div class="nmap-profile-list">
+        <div class="nmap-profile">
+          <div class="nmap-profile-mark">01</div>
+          <div><strong>Quick scan</strong><span>Checks the top 100 TCP ports. Maximum runtime: 180 seconds. Useful for a fast initial review.</span></div>
+        </div>
+        <div class="nmap-profile">
+          <div class="nmap-profile-mark">02</div>
+          <div><strong>Standard scan</strong><span>Checks the top 1,000 TCP ports. Maximum runtime: 300 seconds. A broader routine assessment.</span></div>
+        </div>
+        <div class="nmap-profile">
+          <div class="nmap-profile-mark">03</div>
+          <div><strong>Full TCP scan</strong><span>Checks ports 1–65535. Maximum runtime: 1,200 seconds. May take longer depending on network conditions.</span></div>
+        </div>
+      </div>
+      <div class="nmap-security-note">
+        <strong>Time limits are maximums</strong><br>
+        Actual duration depends on target responsiveness, packet filtering and network conditions. Service/version detection may not identify every service accurately.
+      </div>
+    </section>
+    <section class="panel">
+      <div class="panel-heading"><div><h2>Reading the results</h2><p class="subtitle">Understand the reported port states.</p></div></div>
+      <div class="nmap-profile-list">
+        <div class="nmap-profile"><div class="nmap-profile-mark nmap-state-indicator">●</div><div><strong>Open</strong><span>A service is accepting connections on the port.</span></div></div>
+        <div class="nmap-profile"><div class="nmap-profile-mark nmap-state-indicator">●</div><div><strong>Filtered</strong><span>Filtering prevents Nmap from determining the state reliably.</span></div></div>
+        <div class="nmap-profile"><div class="nmap-profile-mark nmap-state-indicator">●</div><div><strong>Closed</strong><span>The port is reachable, but no service is listening there.</span></div></div>
+      </div>
+    </section>
+  </aside>
+</div>
+
+{% endif %}
+
+{% if result %}
+  <div class="result-history-nav">
+    <a class="button result-history-button" href="{{ url_for('history_page') }}" onclick="return shadowMapBackToHistory();">Back to Scan History</a>
+  </div>
+<section class="panel">
+  <div class="nmap-result-head">
+    <div>
+      <div class="nmap-kicker">Assessment output</div>
+      <h2 class="nmap-result-title">NMAP #{{ result.id }}</h2>
+      <p class="subtitle">Target: <strong>{{ result.target }}</strong></p>
+    </div>
+    <div class="nmap-result-actions">
+      {% if result.status in ["Completed", "Partial"] %}
+      <a class="button" href="{{ url_for('export_nmap_pdf', scan_id=result.id) }}">Download PDF</a>
+      {% endif %}
+      <span class="status">{{ result.status }}</span>
+    </div>
+  </div>
+
+  {% if result.status == "Running" %}
+  <div id="nmap-live-progress"
+       data-progress-url="{{ url_for('nmap_scan_progress', scan_id=result.id) }}"
+       class="nmap-live-progress">
+    <div class="nmap-progress-header">
+      <div>
+        <div class="nmap-kicker">Live Nmap phase progress · Not overall completion</div>
+        <strong id="nmap-progress-task" class="nmap-progress-task">Waiting for Nmap progress</strong>
+      </div>
+      <strong id="nmap-progress-percent" class="nmap-progress-percent">Awaiting data</strong>
+    </div>
+    <div class="nmap-progress-track">
+      <div id="nmap-progress-bar"
+           class="nmap-progress-bar"></div>
+    </div>
+    <div id="nmap-progress-detail" class="subtitle nmap-progress-detail">
+      Waiting for the first genuine Nmap task-progress event…
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="nmap-result-meta">
+    <div class="nmap-meta"><span>SCAN ID</span><strong>NMAP #{{ result.id }}</strong></div>
+    <div class="nmap-meta"><span>HOST STATE</span><strong>{{ result.host_state or "Unknown" }}</strong></div>
+    <div class="nmap-meta"><span>STARTED (IST)</span><strong>{{ result.started_at|datetime }}</strong></div>
+    <div class="nmap-meta"><span>FINISHED</span><strong>{{ result.finished_at|datetime if result.finished_at else "Not available" }}</strong></div>
+    <div class="nmap-meta"><span>DURATION</span><strong>{% if result.duration_seconds is not none %}{{ result.duration_seconds }} s{% else %}—{% endif %}</strong></div>
+  </div>
+
+  <div class="nmap-section-title">
+    <h3>Host Intelligence</h3>
+    <span class="nmap-table-note">MAC and operating system identification</span>
+  </div>
+  <div class="nmap-intelligence-grid">
+    <div class="nmap-intelligence-card">
+      <span>MAC ADDRESS</span>
+      {% if result.mac_address %}
+      <strong>{{ result.mac_address }}</strong>
+      {% else %}
+      <strong class="unavailable">Not detected</strong>
+      {% endif %}
+    </div>
+    <div class="nmap-intelligence-card">
+      <span>MAC VENDOR</span>
+      {% if result.mac_vendor %}
+      <strong>{{ result.mac_vendor }}</strong>
+      {% else %}
+      <strong class="unavailable">Not identified</strong>
+      {% endif %}
+    </div>
+    <div class="nmap-intelligence-card">
+      <span>OPERATING SYSTEM</span>
+      {% if result.os_match %}
+      <strong>{{ result.os_match }}</strong>
+      {% else %}
+      <strong class="unavailable">Not identified</strong>
+      {% endif %}
+    </div>
+    <div class="nmap-intelligence-card">
+      <span>OS MATCH ACCURACY</span>
+      {% if result.os_accuracy %}
+      <strong>{{ result.os_accuracy }}%</strong>
+      {% else %}
+      <strong class="unavailable">Not available</strong>
+      {% endif %}
+    </div>
+    <div class="nmap-intelligence-card">
+      <span>OS DETECTION STATUS</span>
+      {% if result.os_detection_status in ["detected", "enabled"] and result.os_match %}
+      <strong>Detected · Identified</strong>
+      {% elif result.os_detection_status in ["not_detected", "enabled"] %}
+      <strong class="unavailable">Detection ran · No fingerprint</strong>
+      {% elif result.os_detection_status == "disabled" %}
+      <strong class="unavailable">Not requested</strong>
+      {% elif result.os_detection_status == "skipped_no_privileges" %}
+      <strong class="unavailable">Skipped · Insufficient privileges</strong>
+      {% else %}
+      <strong class="unavailable">Status unavailable</strong>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if result.error %}
+  <div class="notice"><strong>{% if result.status == "Partial" %}Partial scan warning:{% else %}Scan error:{% endif %}</strong> {{ result.error }}</div>
+  {% endif %}
+
+  {% if result.status in ["Completed", "Partial"] %}
+  <div class="nmap-section-title"><h3>Port state summary</h3><span class="nmap-table-note">Counts from returned entries</span></div>
+  <div class="nmap-state-grid">
+    <div class="nmap-state open"><span>Open</span><strong>{{ counts.open }}</strong></div>
+    <div class="nmap-state closed"><span>Closed</span><strong>{{ counts.closed }}</strong></div>
+    <div class="nmap-state filtered"><span>Filtered</span><strong>{{ counts.filtered }}</strong></div>
+    <div class="nmap-state other"><span>Other states</span><strong>{{ counts.other }}</strong></div>
+  </div>
+
+  <div class="nmap-section-title"><h3>Port details</h3><span class="nmap-table-note">{{ ports|length }} entries returned</span></div>
+  {% if ports %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Port</th><th>Protocol</th><th>State</th><th>Service</th><th>Product / Version</th><th>Reason</th></tr></thead>
+      <tbody>
+      {% for port in ports %}
+      <tr>
+        <td><strong>{{ port.port }}</strong></td>
+        <td>{{ port.protocol }}</td>
+        <td><span class="status">{{ port.state }}</span></td>
+        <td>{{ port.service or "Unknown" }}</td>
+        <td>
+          {{ port.product or "" }}{% if port.version %} {{ port.version }}{% endif %}
+          {% if port.extra_info %}<br><span class="muted small">{{ port.extra_info }}</span>{% endif %}
+          {% if not port.product and not port.version and not port.extra_info %}—{% endif %}
+        </td>
+        <td>{{ port.reason or "—" }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty"><div class="nmap-empty-icon">⌁</div><strong>No individual port entries returned</strong><p>This does not prove that the target has no open ports.</p></div>
+  {% endif %}
+
+  <div class="nmap-security-note"><strong>Interpretation</strong><br>An open port is an exposed network service, not automatically a vulnerability. Filtered states are inconclusive, and service/version identification may be missing or inaccurate.</div>
+  {% endif %}
+</section>
+{% endif %}
+
+{% if not result %}
+<section class="panel">
+  <div class="panel-heading">
+    <div><h2>Scan history</h2><p class="subtitle">Review previous network assessments and their saved results.</p></div>
+    <span class="nmap-tag">{{ recent_scans|length }} RECENT</span>
+  </div>
+
+  {% if recent_scans %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>ID</th><th>Target</th><th>Status</th><th>Host state</th><th>Started (IST)</th><th>Duration</th><th>Details</th></tr></thead>
+      <tbody>
+      {% for scan in recent_scans %}
+      <tr>
+        <td><strong>#{{ scan.id }}</strong></td>
+        <td>{{ scan.target }}</td>
+        <td><span class="status">{{ scan.status }}</span></td>
+        <td>{{ scan.host_state or "—" }}</td>
+        <td>{{ scan.started_at|datetime }}</td>
+        <td>{% if scan.duration_seconds is not none %}{{ scan.duration_seconds }} s{% else %}—{% endif %}</td>
+        <td><a class="action-button" href="{{ url_for('nmap_results', scan_id=scan.id) }}">View results →</a></td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty"><div class="nmap-empty-icon">⌁</div><strong>No Nmap scans yet</strong><p>Submit an authorized scan above to see saved results here.</p></div>
+  {% endif %}
+</section>
+{% endif %}
+
+{% if result and result.status == "Running" %}
+<script>
+(() => {
+  const panel = document.getElementById("nmap-live-progress");
+  if (!panel) return;
+
+  const taskNode = document.getElementById("nmap-progress-task");
+  const percentNode = document.getElementById("nmap-progress-percent");
+  const barNode = document.getElementById("nmap-progress-bar");
+  const detailNode = document.getElementById("nmap-progress-detail");
+  const endpoint = panel.dataset.progressUrl;
+  let stopped = false;
+
+  async function pollNmapProgress() {
+    if (stopped) return;
+
+    try {
+      const response = await fetch(endpoint, {
+        headers: {"Accept": "application/json"},
+        cache: "no-store"
+      });
+      if (!response.ok) throw new Error("HTTP " + response.status);
+
+      const data = await response.json();
+      const terminal = ["Completed", "Partial", "Failed"].includes(data.status);
+
+      taskNode.textContent = data.task || "Waiting for Nmap progress";
+
+      if (typeof data.percent === "number" && Number.isFinite(data.percent)) {
+        const percent = Math.max(0, Math.min(100, data.percent));
+        percentNode.textContent = percent.toFixed(1) + "%";
+        barNode.style.width = percent + "%";
+      } else {
+        percentNode.textContent = "Awaiting data";
+      }
+
+      detailNode.textContent = typeof data.percent === "number"
+        ? "Nmap-reported progress for the current phase; the percentage may reset when the phase changes."
+        : "Waiting for genuine Nmap task-progress data.";
+
+      if (terminal) {
+        stopped = true;
+        detailNode.textContent = "Scan finished. Loading saved results…";
+        window.location.reload();
+        return;
+      }
+    } catch (error) {
+      detailNode.textContent = "Progress temporarily unavailable. Retrying…";
+    }
+
+    if (!stopped) window.setTimeout(pollNmapProgress, 1500);
+  }
+
+  pollNmapProgress();
+})();
+</script>
+{% endif %}
+
+{% endblock %}

@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+
+{% block title %}Scan Run #{{ run.id }} | LAN Network Monitor{% endblock %}
+
+{% block header %}
+<h1>Historical Scan Details</h1>
+<p class="subtitle">
+  Detailed results preserved from LAN Network Monitor scan #{{ run.id }}.
+</p>
+{% endblock %}
+
+{% block content %}
+
+
+<div class="run-details">
+
+  <section class="panel">
+    <div class="run-toolbar">
+      <div>
+        <h2>Scan Run #{{ run.id }}</h2>
+        <span class="run-status">
+          {{ run.status|replace("_", " ")|title }}
+        </span>
+      </div>
+
+      <a
+        class="run-back action-button"
+        href="{{ url_for('network_discovery.index') }}"
+      >
+        ← Back to LAN Network Monitor
+      </a>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Scan Information</h2>
+
+    <div class="run-meta">
+      <div class="run-meta-item">
+        <strong>Run ID</strong>
+        #{{ run.id }}
+      </div>
+
+      <div class="run-meta-item">
+        <strong>Network Interface</strong>
+        {{ run.interface_name }}
+      </div>
+
+      <div class="run-meta-item">
+        <strong>Subnet</strong>
+        {{ run.subnet }}
+      </div>
+
+      <div class="run-meta-item">
+        <strong>Scan Status</strong>
+        {{ run.status|replace("_", " ")|title }}
+      </div>
+
+      <div class="run-meta-item">
+        <strong>Devices Found</strong>
+        {{ run.devices_found }}
+      </div>
+
+      <div class="run-meta-item">
+        <strong>Started</strong>
+        {{ run.started_at|datetime }}
+      </div>
+
+      <div class="run-meta-item">
+        <strong>Finished</strong>
+        {% if run.finished_at %}
+          {{ run.finished_at|datetime }}
+        {% else %}
+          Not available
+        {% endif %}
+      </div>
+    </div>
+
+    {% if run.status == "failed" %}
+      <h3>Scan Error</h3>
+      <div class="run-error">
+        {{ run.error or "No error details were recorded." }}
+      </div>
+    {% endif %}
+  </section>
+
+  {% if run.status == "completed" %}
+    <section class="panel">
+      <h2>Devices Discovered During This Scan</h2>
+
+      <p class="run-note">
+        These are the device details recorded at the time of this scan.
+        Later scans do not modify this historical snapshot.
+      </p>
+
+      {% if devices %}
+        <div class="run-table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>IP Address</th>
+                <th>MAC Address</th>
+                <th>Hostname</th>
+                <th>Vendor</th>
+                <th>Device Type</th>
+                <th>Confidence</th>
+
+                <th>Open TCP Ports & Services</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {% for device in devices %}
+                <tr>
+                  <td><strong>{{ device.ip_address }}</strong></td>
+
+                  <td>{{ device.mac_address or "Not available" }}</td>
+
+                  <td>
+                    {% if device.hostnames %}
+                      {{ device.hostnames|join(", ") }}
+                    {% else %}
+                      Not available
+                    {% endif %}
+                  </td>
+
+                  <td>{{ device.vendor or "Unknown" }}</td>
+
+                  <td>
+                    {{ device.device_type|default("unknown")|replace("_", " ")|title }}{% if device.classification_confidence|default("low") != "high" %}*{% endif %}
+                  </td>
+
+                  <td>
+                    {{ device.classification_confidence|default("low")|title }}
+                  </td>
+
+
+
+                  <td class="run-ports">
+                    {% if device.open_ports %}
+                      {% for port in device.open_ports %}
+                        <div>
+                          <strong>
+                            {{ port.port }}/{{ port.protocol|default("tcp") }}
+                          </strong>
+                          — {{ port.service or "Unknown service" }}
+
+                          {% if port.product %}
+                            ({{ port.product }}{% if port.version %} {{ port.version }}{% endif %})
+                          {% endif %}
+
+                          {% if port.extrainfo or port.extra_info %}
+                            <div class="run-note">
+                              {{ port.extrainfo or port.extra_info }}
+                            </div>
+                          {% endif %}
+                        </div>
+                      {% endfor %}
+                    {% else %}
+                      No open TCP ports recorded
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="empty">
+          This scan completed successfully but did not discover any devices.
+        </div>
+      {% endif %}
+    </section>
+  {% endif %}
+
+</div>
+{% endblock %}

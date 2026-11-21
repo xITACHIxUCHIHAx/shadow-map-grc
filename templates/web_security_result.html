@@ -1,0 +1,268 @@
+{% extends "base.html" %}
+
+{% block title %}Web Security Result | Shadow Map GRC{% endblock %}
+
+{% block header %}
+<h1>Web Security Result</h1>
+<p class="subtitle">Saved HTTPS configuration assessment.</p>
+{% endblock %}
+
+{% block content %}
+<div class="report-page">
+  <div class="result-history-nav">
+    <a class="button result-history-button" href="{{ url_for('history_page') }}" onclick="return shadowMapBackToHistory();">Back to Scan History</a>
+  </div>
+<section class="panel">
+  <div class="panel-heading">
+    <div class="web-result-actions">
+      {% if record.status == "Completed" %}
+        <a class="button" href="{{ url_for('export_web_security_pdf', scan_id=record.id) }}">Download PDF</a>
+      {% endif %}
+    </div>
+
+    <div>
+      <h2>{{ record.target }}</h2>
+      <p class="subtitle">Scan ID: WEB SECURITY #{{ record.id }} · Started {{ record.started_at|datetime }}</p>
+    </div>
+    {% if record.status == "Completed" %}
+      <span class="status">Completed</span>
+    {% else %}
+      <span class="batch-status">{{ record.status }}</span>
+    {% endif %}
+  </div>
+
+  <div class="module-grid">
+    <div class="module"><div><strong>Duration</strong><span>{% if record.duration_seconds is not none %}{{ "%.2f"|format(record.duration_seconds) }}s{% else %}—{% endif %}</span></div></div>
+    <div class="module"><div><strong>Finished</strong><span>{{ record.finished_at|datetime if record.finished_at else "—" }}</span></div></div>
+    <div class="module"><div><strong>Scan ID</strong><span>WEB SECURITY #{{ record.id }}</span></div></div>
+  </div>
+
+  {% if record.error %}
+    <div class="notice"><strong>Assessment error:</strong> {{ record.error }}</div>
+  {% endif %}
+</section>
+
+{% if result %}
+<section class="panel">
+  <div class="panel-heading">
+    <div><h2>HTTPS response</h2><p class="subtitle">{{ result.target }}</p></div>
+    <span class="status">HTTP {{ result.status_code }}</span>
+  </div>
+
+  <div class="module-grid">
+    <div class="module"><div><strong>Headers present</strong><span>{{ result.headers|selectattr('present')|list|length }} of {{ result.headers|length }}</span></div></div>
+    <div class="module"><div><strong>Missing headers</strong><span>{{ result.missing_headers }}</span></div></div>
+    <div class="module"><div><strong>Cookies observed</strong><span>{{ result.cookies|length }}</span></div></div>
+  </div>
+
+  <div class="panel-heading"><h2>Security header observations</h2></div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Header</th><th>Observed</th><th>Assessment</th><th>Value</th><th>Purpose</th></tr></thead>
+      <tbody>
+        {% for item in result.headers %}
+        <tr>
+          <td>{{ item.name }}</td>
+          <td>{{ "Present" if item.present else "Missing" }}</td>
+          <td>{{ item.assessment }}</td>
+          <td>{{ item.value or "—" }}</td>
+          <td>{{ item.purpose }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="panel-heading"><h2>Cookie attributes</h2></div>
+  {% if result.cookies %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Cookie response</th><th>Secure</th><th>HttpOnly</th><th>SameSite</th></tr></thead>
+      <tbody>
+        {% for cookie in result.cookies %}
+        <tr><td>Cookie {{ cookie.number }}</td><td>{{ "Yes" if cookie.secure else "Not observed" }}</td><td>{{ "Yes" if cookie.httponly else "Not observed" }}</td><td>{{ "Yes" if cookie.samesite else "Not observed" }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted">No Set-Cookie headers were observed in this response.</p>
+  {% endif %}
+
+  {% set reflected_assessment = result.reflected_input_assessment|default({}, true) %}
+  {% set sql_assessment = result.sql_injection_assessment|default({}, true) %}
+  {% set assessment_plan = result.assessment_plan|default({}, true) %}
+  {% set boolean_checks = assessment_plan.sql_boolean_based_checks|default([], true) %}
+
+  {% if result.reflected_input_assessment is defined
+        or result.sql_injection_assessment is defined
+        or result.assessment_plan is defined %}
+  <div class="panel-heading"><h2>Vulnerability Assessment Coverage</h2></div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Assessment</th>
+          <th>Parameter</th>
+          <th>Status</th>
+          <th>Confidence</th>
+          <th>Verification</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for label, assessment in [
+          ("Reflected-input check", reflected_assessment),
+          ("Error-based SQL injection", sql_assessment)
+        ] %}
+          {% if assessment.checks|default([], true) %}
+            {% for check in assessment.checks %}
+            <tr>
+              <td>{{ label }}</td>
+              <td>{{ check.parameter or "—" }}</td>
+              <td>{{ (check.status or assessment.status or "not recorded")|replace("_", " ")|title }}</td>
+              <td>{{ check.confidence or "—" }}</td>
+              <td>{{ "Not verified" if check.verified is sameas false else "Not recorded" }}</td>
+            </tr>
+            {% endfor %}
+          {% elif assessment %}
+            <tr>
+              <td>{{ label }}</td>
+              <td>—</td>
+              <td>{{ (assessment.status or "not recorded")|replace("_", " ")|title }}</td>
+              <td>—</td>
+              <td>Not verified</td>
+            </tr>
+          {% endif %}
+        {% endfor %}
+
+        {% for check in boolean_checks %}
+        <tr>
+          <td>Boolean-based SQL injection</td>
+          <td>{{ check.parameter or "—" }}</td>
+          <td>Planned — Not Tested</td>
+          <td>—</td>
+          <td>Not verified</td>
+        </tr>
+        {% endfor %}
+
+        {% if not reflected_assessment and not sql_assessment and not boolean_checks %}
+        <tr><td colspan="5">No assessment checks recorded.</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+  <div class="notice">
+    Suspected indicators are unverified evidence, not confirmed vulnerabilities.
+    Boolean-based SQL injection candidates are planned for review only; no Boolean test requests were sent.
+  </div>
+  {% endif %}
+
+  <div class="notice"><strong>Interpretation:</strong> These are configuration observations, not confirmed vulnerabilities. Review each result in the context of the website and its application requirements.</div>
+  {% if result.discovery %}
+    <div class="panel-heading">
+        <h2>Page Discovery</h2>
+    </div>
+    <div class="module-grid">
+        <div class="module"><div><strong>Pages visited</strong><span>{{ result.discovery.pages|length }}</span></div></div>
+        <div class="module"><div><strong>URLs discovered</strong><span>{{ result.discovery.discovered_urls|length }}</span></div></div>
+        <div class="module"><div><strong>Forms observed</strong><span>{{ result.discovery.forms|length }}</span></div></div>
+        <div class="module"><div><strong>API endpoints identified</strong><span>{{ result.discovery.api_endpoints|default([])|length }}</span></div></div>
+    </div>
+
+    <h3>Visited pages</h3>
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th>URL</th><th>HTTP status</th><th>Content type</th><th>Truncated</th></tr></thead>
+            <tbody>
+            {% for page in result.discovery.pages %}
+                <tr>
+                    <td>{{ page.url }}</td>
+                    <td>{{ page.status_code or "—" }}</td>
+                    <td>{{ page.content_type or "—" }}</td>
+                    <td>{{ "Yes" if page.truncated else "No" }}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <h3>Discovered URLs</h3>
+    <ul>
+        {% for url in result.discovery.discovered_urls %}
+        <li>{{ url }}</li>
+        {% else %}
+        <li>No additional URLs discovered.</li>
+        {% endfor %}
+    </ul>
+
+    <h3>Forms observed (not submitted)</h3>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Page</th>
+                    <th>Method</th>
+                    <th>Action</th>
+                    <th>Encoding</th>
+                    <th>Fields</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for form in result.discovery.forms %}
+                <tr>
+                    <td>{{ form.page }}</td>
+                    <td>{{ form.method|upper }}</td>
+                    <td>{{ form.action }}</td>
+                    <td>{{ form.enctype or "—" }}</td>
+                    <td>
+                        {% for field in form.fields|default([]) %}
+                            <div>
+                                <strong>{{ field.name or "(unnamed)" }}</strong>
+                                ({{ field.element or "unknown" }})
+                                {% if field.type %} · Type: {{ field.type }}{% endif %}
+                                · Required: {{ "Yes" if field.required else "No" }}
+                                {% if field.autocomplete %} · Autocomplete: {{ field.autocomplete }}{% endif %}
+                                {% if field.options %}
+                                    <div class="muted small">Options: {{ field.options|join(", ") }}</div>
+                                {% endif %}
+                            </div>
+                        {% else %}
+                            <span class="muted">No fields recorded.</span>
+                        {% endfor %}
+                    </td>
+                </tr>
+            {% else %}
+                <tr><td colspan="5">No forms observed.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <h3>Likely API endpoints (static JavaScript analysis)</h3>
+    <ul>
+        {% for endpoint in result.discovery.api_endpoints|default([]) %}
+            <li>{{ endpoint }}</li>
+        {% else %}
+            <li>No likely API endpoints identified.</li>
+        {% endfor %}
+    </ul>
+
+    {% for note in result.discovery.notes %}
+    <p class="muted small">{{ note }}</p>
+    {% endfor %}
+    {% for item in result.discovery.errors %}
+    <p class="muted small">Discovery note: {{ item }}</p>
+    {% endfor %}
+    {% endif %}
+
+    {% if result.discovery_error %}
+    <div class="notice"><strong>Page discovery did not complete:</strong> {{ result.discovery_error }}</div>
+    {% endif %}
+
+  <h2>Limitations</h2>
+  <ul>{% for note in result.notes %}<li>{{ note }}</li>{% endfor %}</ul>
+</section>
+{% endif %}
+
+</div>
+{% endblock %}

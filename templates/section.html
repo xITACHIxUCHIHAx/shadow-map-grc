@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }} | Shadow Map GRC{% endblock %}
+
+{% block header %}
+<h1>{{ title }}</h1>
+<p class="subtitle">{{ subtitle }}</p>
+{% endblock %}
+
+{% block content %}
+<section class="panel">
+    <div class="panel-heading">
+        <h2>Module overview</h2>
+    </div>
+    <p class="section-description">{{ description }}</p>
+    <div class="notice">
+        <strong>Development status:</strong> {{ notice }}
+    </div>
+    <p class="muted small">
+        This module is under development until its workflow is implemented and tested.
+    </p>
+</section>
+{% endblock %}

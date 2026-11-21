@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+
+{% block title %}Nmap Batch Results | Shadow Map GRC{% endblock %}
+
+{% block header %}
+<h1>Nmap Batch Results</h1>
+<p class="subtitle">Independent outcomes for every target submitted in this batch.</p>
+{% endblock %}
+
+{% block content %}
+<div class="report-page">
+
+
+<section class="batch-hero">
+  <div class="batch-kicker">Batch assessment · #{{ batch.id }}</div>
+  <h2>{{ batch.status }} — {{ batch.total_targets }} target(s)</h2>
+  <p class="subtitle">Profile: {{ batch.profile|replace('_', ' ')|title }} · Started: {{ batch.created_at|datetime }}</p>
+
+  <div class="batch-stats">
+    <div class="batch-stat"><span>Total targets</span><strong>{{ batch.total_targets }}</strong></div>
+    <div class="batch-stat completed"><span>Completed</span><strong>{{ batch.completed_targets }}</strong></div>
+    <div class="batch-stat partial"><span>Partial</span><strong>{{ batch.partial_targets }}</strong></div>
+    <div class="batch-stat failed"><span>Failed</span><strong>{{ batch.failed_targets }}</strong></div>
+  </div>
+</section>
+
+<div class="batch-actions">
+  <a class="button" href="{{ url_for('nmap_page') }}">＋ New Nmap scan</a>
+  <a class="button" href="{{ url_for('nmap_page') }}" >Back to Nmap</a>
+</div>
+
+<section class="panel">
+  <div class="panel-heading">
+    <div>
+      <h2>Target results</h2>
+      <p class="subtitle">Each row represents one independently processed target.</p>
+    </div>
+    <span class="batch-status">{{ items|length }} items</span>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Target</th>
+          <th>Status</th>
+          <th>Duration</th>
+          <th>Host state</th>
+          <th>Result</th>
+          <th>Details</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in items %}
+        <tr>
+          <td>{{ item.position }}</td>
+          <td><strong>{{ item.target }}</strong></td>
+          <td>
+            {% if item.status == "Completed" %}
+              <span class="status completed">Completed</span>
+            {% elif item.status == "Partial" %}
+              <span class="status partial">Partial</span>
+            {% else %}
+              <span class="status failed">Failed</span>
+            {% endif %}
+            {% if item.error %}
+              <div class="batch-error small">{{ item.error }}</div>
+            {% endif %}
+          </td>
+          <td>{% if item.duration_seconds is not none %}{{ "%.2f"|format(item.duration_seconds) }}s{% else %}—{% endif %}</td>
+          <td>{{ item.host_state or "—" }}</td>
+          <td>
+            {% if item.result_type == "nmap" and item.result_record_id %}
+              Nmap #{{ item.result_record_id }}
+            {% else %}
+              No scan record
+            {% endif %}
+          </td>
+          <td>
+            {% if item.result_type == "nmap" and item.result_record_id %}
+              <a class="action-button" href="{{ url_for('nmap_results', scan_id=item.result_record_id) }}">View scan →</a>
+            {% else %}
+              <span class="muted">No result page</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7">No targets were recorded for this batch.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+</div>
+{% endblock %}

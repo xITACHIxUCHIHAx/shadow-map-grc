@@ -1,0 +1,571 @@
+{% extends "base.html" %}
+{% block title %}MITRE ATT&CK Coverage | Shadow Map GRC{% endblock %}
+
+{% block header %}
+<h1>MITRE ATT&CK Coverage</h1>
+<p class="subtitle">
+  Review evidence-supported analyst mappings against the imported
+  MITRE ATT&CK Enterprise catalogue.
+</p>
+{% endblock %}
+
+{% block content %}
+
+
+
+<section class="hr-panel">
+  <div class="attack-section-heading">
+    <div>
+      <h2>MITRE ATT&CK catalogue synchronization</h2>
+      <p class="hr-muted">
+        Automatically checks the official Enterprise ATT&CK release index
+        when Shadow Map GRC starts, then every 24 hours.
+      </p>
+    </div>
+    <form method="POST" action="{{ url_for('automatic_risks.attack_coverage_sync') }}">
+      <input type="hidden" name="csrf_token" value="{{ attack_import_csrf_token }}">
+      <button class="hr-btn" type="submit">Check for updates</button>
+    </form>
+  </div>
+
+  <div class="attack-summary-grid">
+    <div class="attack-stat">
+      <div class="attack-stat-label">Updater status</div>
+      <div class="attack-stat-value attack-stat-value--large">
+        {{ attack_sync_status.status|replace('_', ' ')|title }}
+      </div>
+    </div>
+    <div class="attack-stat">
+      <div class="attack-stat-label">Last checked (IST)</div>
+      <div class="attack-stat-value attack-stat-value--medium">
+        {{ attack_sync_status.last_checked|datetime if attack_sync_status.last_checked else "Not checked yet" }}
+      </div>
+    </div>
+    <div class="attack-stat">
+      <div class="attack-stat-label">Latest available version</div>
+      <div class="attack-stat-value attack-stat-value--large">
+        {{ attack_sync_status.latest_available_version or "Unknown" }}
+      </div>
+    </div>
+    <div class="attack-stat">
+      <div class="attack-stat-label">Imported version</div>
+      <div class="attack-stat-value attack-stat-value--large">
+        {{ attack_sync_status.imported_version or "None" }}
+      </div>
+    </div>
+  </div>
+
+  {% if attack_sync_status.error %}
+    <div class="attack-note">
+      <strong>Last synchronization error:</strong>
+      {{ attack_sync_status.error }}
+    </div>
+  {% endif %}
+</section>
+
+<section class="hr-panel">
+  <div class="attack-section-heading">
+    <div>
+      <h2>Recent Scans</h2>
+      <p class="hr-muted">
+        Latest five assessments across all scan modules.
+        Global Scan IDs and persistent Target IDs are shared throughout Shadow Map GRC.
+      </p>
+    </div>
+    <a class="hr-btn" href="{{ url_for('history_page') }}">View All Scans</a>
+  </div>
+
+  <div class="attack-table-wrap">
+    <table class="attack-table">
+      <thead>
+        <tr>
+          <th>Scan ID</th>
+          <th>Target ID</th>
+          <th>Target</th>
+          <th>Status</th>
+          <th>Started</th>
+          <th>Report</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for scan in recent_scans %}
+          <tr>
+            <td><strong>{{ scan.scan_id }}</strong></td>
+            <td>{{ scan.target_id or "Not assigned" }}</td>
+            <td>{{ scan.target }}</td>
+            <td>{{ scan.status }}</td>
+            <td>{{ scan.started_at|datetime if scan.started_at else "Not recorded" }}</td>
+            <td><a class="hr-btn" href="{{ scan.result_url }}">Open report</a></td>
+          </tr>
+        {% else %}
+          <tr>
+            <td colspan="6" class="attack-empty">
+              No saved scans are available yet.
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+
+
+<section class="hr-panel">
+  <div class="attack-section-heading">
+    <div>
+      <h2>Coverage overview</h2>
+      <p class="hr-muted">
+        {% if coverage.catalogue_available %}
+          Enterprise ATT&CK catalogue version:
+          <strong>{{ coverage.version }}</strong>
+        {% else %}
+          No Enterprise ATT&CK catalogue is currently imported.
+        {% endif %}
+      </p>
+    </div>
+
+    <div class="attack-toolbar">
+      {% if coverage.catalogue_available %}
+        <a class="hr-btn" href="{{ url_for('automatic_risks.attack_coverage_export_navigator') }}">
+          Download Navigator JSON
+        </a>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="attack-note hr-muted">
+    <strong>Confirmed coverage:</strong> Counts only findings whose analyst
+    validation status is <strong>Evidence-supported</strong> and whose
+    analyst-selected technique exists in the imported catalogue and is
+    neither deprecated nor revoked.
+    <br>
+    <strong>Automated suggestions:</strong> Displayed separately as
+    unconfirmed candidates. They do not count as confirmed coverage and
+    are excluded from Navigator exports.
+  </div>
+
+  {% if not coverage.catalogue_available %}
+    <div class="attack-note">
+      <strong>Catalogue required.</strong>
+      Import the MITRE ATT&CK Enterprise STIX catalogue before coverage
+      can be validated or exported. Existing analyst mappings remain stored,
+      but are not counted as confirmed catalogue coverage.
+    </div>
+  {% endif %}
+
+  <div class="attack-summary-grid">
+    <div class="attack-stat">
+      <div class="attack-stat-label">Total findings</div>
+      <div class="attack-stat-value">{{ coverage.total_findings }}</div>
+    </div>
+    <div class="attack-stat">
+      <div class="attack-stat-label">Evidence-supported mappings</div>
+      <div class="attack-stat-value">{{ coverage.supported_mappings }}</div>
+    </div>
+    <div class="attack-stat">
+      <div class="attack-stat-label">Unique techniques</div>
+      <div class="attack-stat-value">{{ coverage.unique_techniques }}</div>
+    </div>
+    <div class="attack-stat">
+      <div class="attack-stat-label">Invalid supported mappings</div>
+      <div class="attack-stat-value">{{ coverage.invalid_supported_mappings }}</div>
+    </div>
+    <div class="attack-stat">
+      <div class="attack-stat-label">Automated suggested mappings</div>
+      <div class="attack-stat-value">{{ coverage.suggested_mappings }}</div>
+    </div>
+    <div class="attack-stat">
+      <div class="attack-stat-label">Suggested unique techniques</div>
+      <div class="attack-stat-value">{{ coverage.suggested_unique_techniques }}</div>
+    </div>
+    <div class="attack-stat">
+      <div class="attack-stat-label">Invalid automated suggestions</div>
+      <div class="attack-stat-value">{{ coverage.invalid_suggested_mappings }}</div>
+    </div>
+  </div>
+</section>
+
+<section class="hr-panel">
+  <div class="attack-section-heading">
+    <div>
+      <h2>Coverage by ATT&CK tactic</h2>
+      <span class="hr-muted" id="attack-tactic-count">
+        {{ coverage.tactic_rows|selectattr('technique_count', 'gt', 0)|list|length
+           + coverage.tactic_rows|selectattr('suggested_technique_count', 'gt', 0)|list|length
+           - 0 }} of {{ coverage.tactic_rows|length }} tactics
+      </span>
+    </div>
+  </div>
+
+  {% set active_tactics = coverage.tactic_rows
+      |selectattr('technique_count', 'gt', 0)|list %}
+  {% set suggested_only = coverage.tactic_rows
+      |selectattr('technique_count', 'equalto', 0)
+      |selectattr('suggested_technique_count', 'gt', 0)|list %}
+  {% set visible_tactics = active_tactics + suggested_only %}
+  {% set empty_tactics = coverage.tactic_rows
+      |rejectattr('technique_count', 'gt', 0)
+      |rejectattr('suggested_technique_count', 'gt', 0)|list %}
+
+  <div class="attack-table-wrap">
+    <table class="attack-table">
+      <thead>
+        <tr>
+          <th>Tactic</th>
+          <th>Short name</th>
+          <th>Confirmed techniques</th>
+          <th>Confirmed findings</th>
+          <th>Suggested techniques</th>
+          <th>Suggested findings</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for tactic in visible_tactics %}
+          <tr>
+            <td>{{ tactic.name }}</td>
+            <td>{{ tactic.short_name }}</td>
+            <td>{{ tactic.technique_count }}</td>
+            <td>{{ tactic.finding_count }}</td>
+            <td>{{ tactic.suggested_technique_count }}</td>
+            <td>{{ tactic.suggested_finding_count }}</td>
+          </tr>
+        {% else %}
+          <tr>
+            <td colspan="6" class="attack-empty">
+              No tactic coverage is available yet.
+            </td>
+          </tr>
+        {% endfor %}
+
+        {% for tactic in empty_tactics %}
+          <tr class="attack-empty-tactic" hidden>
+            <td>{{ tactic.name }}</td>
+            <td>{{ tactic.short_name }}</td>
+            <td>{{ tactic.technique_count }}</td>
+            <td>{{ tactic.finding_count }}</td>
+            <td>{{ tactic.suggested_technique_count }}</td>
+            <td>{{ tactic.suggested_finding_count }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if empty_tactics %}
+    <button type="button"
+            class="attack-tactic-toggle"
+            id="attack-tactic-toggle"
+            aria-expanded="false">
+      ＋ Show {{ empty_tactics|length }} empty tactics
+    </button>
+  {% endif %}
+</section>
+
+<section class="hr-panel">
+  <div class="attack-section-heading">
+    <div>
+      <h2>Suggested technique coverage</h2>
+      <p class="hr-muted">
+        Automated MITRE ATT&CK candidates — not analyst-confirmed.
+      </p>
+    </div>
+    <span class="hr-muted">
+      {{ coverage.suggested_technique_rows|length }} suggested techniques
+    </span>
+  </div>
+
+  <details class="attack-suggestions-collapse">
+    <summary>Show suggested techniques</summary>
+
+  <div class="attack-note hr-muted">
+    These mappings originate from automated detection assistance.
+    Review each candidate before selecting a technique as an analyst mapping.
+    Suggested mappings do not contribute to confirmed coverage or
+    ATT&CK Navigator exports.
+  </div>
+
+  <div class="attack-table-wrap">
+    <table class="attack-table">
+      <thead>
+        <tr>
+          <th>Suggested technique</th>
+          <th>ATT&CK tactics</th>
+          <th>Relationship</th>
+          <th>Suggested findings</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for technique in coverage.suggested_technique_rows %}
+          <tr>
+            <td>
+              <strong>{{ technique.technique_id }}</strong>
+              <div>{{ technique.name }}</div>
+              {% if technique.url %}
+                <div class="attack-muted">
+                  <a href="{{ technique.url }}" target="_blank" rel="noopener noreferrer">
+                    ATT&CK reference
+                  </a>
+                </div>
+              {% endif %}
+              {% if technique.description %}
+                <details class="attack-muted" style="margin-top: 6px;">
+                  <summary style="cursor: pointer; font-size: 0.85em;">Description</summary>
+                  <div style="margin-top: 4px; font-size: 0.85em; line-height: 1.4;">{{ technique.description }}</div>
+                </details>
+              {% endif %}
+            </td>
+            <td>
+              {% for tactic in technique.tactics %}
+                <span class="attack-tag">{{ tactic.name if tactic is mapping else tactic }}</span>
+              {% else %}
+                <span class="attack-muted">Not linked</span>
+              {% endfor %}
+            </td>
+            <td>
+              {% if technique.is_subtechnique %}
+                <span class="attack-tag">Sub-technique</span>
+                <div class="attack-muted">
+                  Parent: {{ technique.parent_technique_id or "Unknown" }}
+                </div>
+              {% else %}
+                <span class="attack-muted">Parent technique</span>
+              {% endif %}
+            </td>
+            <td>
+              <strong>{{ technique.finding_count }} findings</strong>
+              {% if technique.findings %}
+                <details class="attack-technique-findings">
+                  <summary>View {{ technique.findings|length }} findings</summary>
+                  <div class="attack-table-wrap">
+                    <table class="attack-table">
+                      <thead>
+                        <tr>
+                          <th>Finding ID</th>
+                          <th>Finding</th>
+                          <th>Target</th>
+                          <th>Confidence</th>
+                          <th>Rationale</th>
+                          <th>Evidence</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {% for finding in technique.findings %}
+                          <tr>
+                            <td>#{{ finding.id }}</td>
+                            <td>{{ finding.title }}</td>
+                            <td>{{ finding.target or "Not recorded" }}</td>
+                            <td>{{ finding.mapping_confidence or "Unassessed" }}</td>
+                            <td>{{ finding.mapping_rationale or "Not provided" }}</td>
+                            <td>
+                              {% if finding.source_reference %}
+                                <a href="{{ finding.source_reference }}"
+                                   target="_blank" rel="noopener noreferrer">
+                                  Evidence reference
+                                </a>
+                              {% else %}
+                                <span class="attack-muted">Not available</span>
+                              {% endif %}
+                            </td>
+                          </tr>
+                        {% endfor %}
+                      </tbody>
+                    </table>
+                  </div>
+                </details>
+              {% else %}
+                <span class="attack-muted">No linked findings</span>
+              {% endif %}
+            </td>
+          </tr>
+        {% else %}
+          <tr>
+            <td colspan="4" class="attack-empty">
+              No valid automated technique suggestions match the imported
+              catalogue.
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  </details>
+</section>
+
+<section class="hr-panel">
+  <div class="attack-section-heading">
+    <h2>Confirmed technique coverage</h2>
+    <span class="hr-muted">
+      {{ coverage.technique_rows|length }} techniques
+    </span>
+  </div>
+
+  {% if coverage.technique_rows %}
+  <div class="attack-table-wrap">
+    <table class="attack-table">
+      <thead>
+        <tr>
+          <th>Technique</th>
+          <th>ATT&CK tactics</th>
+          <th>Relationship</th>
+          <th>Findings</th>
+          <th>Finding evidence</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for technique in coverage.technique_rows %}
+          <tr>
+            <td>
+              <strong>{{ technique.technique_id }}</strong>
+              <div>{{ technique.name }}</div>
+              {% if technique.url %}
+                <div class="attack-muted">
+                  <a href="{{ technique.url }}" target="_blank" rel="noopener noreferrer">
+                    ATT&CK reference
+                  </a>
+                </div>
+              {% endif %}
+              {% if technique.description %}
+                <details class="attack-muted" style="margin-top: 6px;">
+                  <summary style="cursor: pointer; font-size: 0.85em;">Description</summary>
+                  <div style="margin-top: 4px; font-size: 0.85em; line-height: 1.4;">{{ technique.description }}</div>
+                </details>
+              {% endif %}
+            </td>
+            <td>
+              {% for tactic in technique.tactics %}
+                <span class="attack-tag">{{ tactic.name if tactic is mapping else tactic }}</span>
+              {% else %}
+                <span class="attack-muted">Not linked</span>
+              {% endfor %}
+            </td>
+            <td>
+              {% if technique.is_subtechnique %}
+                <span class="attack-tag">Sub-technique</span>
+                <div class="attack-muted">
+                  Parent: {{ technique.parent_technique_id or "Unknown" }}
+                </div>
+              {% else %}
+                <span class="attack-muted">Parent technique</span>
+              {% endif %}
+            </td>
+            <td><strong>{{ technique.finding_count }}</strong></td>
+            <td>
+              {% for finding in technique.findings %}
+                <div class="attack-finding-item">
+                  <div class="attack-finding-title">
+                    #{{ finding.id }} — {{ finding.title }}
+                  </div>
+                  <div class="attack-muted">
+                    Target: {{ finding.target or "Not recorded" }}
+                  </div>
+                  <div class="attack-muted">
+                    Severity: {{ finding.suggested_severity or "Not set" }}
+                    · Confidence: {{ finding.mapping_confidence or "Unassessed" }}
+                    {% if finding.mapping_confidence in ("High", "Medium") %}
+                      <span class="attack-tag" style="background: #e8f5e9; color: #2e7d32; margin-left: 4px;">Behavioural evidence</span>
+                    {% elif finding.mapping_confidence == "Low" %}
+                      <span class="attack-tag" style="background: #fff8e1; color: #7a5d00; margin-left: 4px;">Potential exposure</span>
+                    {% endif %}
+                  </div>
+                  {% if finding.mapping_rationale %}
+                    <div class="attack-muted">
+                      Rationale: {{ finding.mapping_rationale }}
+                    </div>
+                  {% endif %}
+                  {% if finding.source_reference %}
+                    <div class="attack-muted">
+                      <a href="{{ finding.source_reference }}"
+                         target="_blank" rel="noopener noreferrer">
+                        Evidence reference
+                      </a>
+                    </div>
+                  {% endif %}
+                </div>
+              {% endfor %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endif %}
+</section>
+
+
+<section class="hr-panel attack-import-panel">
+  <div class="attack-section-heading">
+    <div>
+      <h2>Manual STIX JSON import</h2>
+      <p class="hr-muted">
+        Optional fallback if automatic MITRE ATT&CK synchronization is unavailable.
+        Import a versioned Enterprise ATT&CK STIX JSON bundle.
+      </p>
+    </div>
+  </div>
+
+  <form method="POST"
+        action="{{ url_for('automatic_risks.attack_coverage_import') }}"
+        enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token"
+           value="{{ attack_import_csrf_token }}">
+
+    <div class="attack-import-grid">
+      <label>
+        <strong>STIX JSON file</strong>
+        <input type="file" name="stix_file" accept=".json,application/json" required>
+      </label>
+
+      <label>
+        <strong>ATT&CK version</strong>
+        <input type="text" name="version" maxlength="64"
+               placeholder="Example: 19.1" required>
+      </label>
+
+      <label>
+        <strong>Release date (optional)</strong>
+        <input type="date" name="release_date">
+      </label>
+
+      <label>
+        <strong>Source reference (optional)</strong>
+        <input type="text" name="source_reference" maxlength="500"
+               placeholder="Official MITRE source URL">
+      </label>
+    </div>
+
+    <button class="hr-btn" type="submit">Import STIX catalogue</button>
+  </form>
+
+  <p class="attack-muted">
+    The uploaded catalogue is validated before import. Existing historical
+    catalogue releases are retained.
+  </p>
+</section>
+
+<script>
+(() => {
+  const toggle = document.getElementById("attack-tactic-toggle");
+  if (!toggle) return;
+
+  const panel = toggle.closest(".hr-panel");
+  if (!panel) return;
+
+  const rows = panel.querySelectorAll(".attack-empty-tactic");
+
+  toggle.addEventListener("click", () => {
+    const expanded = toggle.getAttribute("aria-expanded") === "true";
+
+    rows.forEach((row) => {
+      row.hidden = expanded;
+    });
+
+    toggle.setAttribute("aria-expanded", String(!expanded));
+    toggle.textContent = expanded
+      ? `＋ Show ${rows.length} empty tactics`
+      : "− Hide empty tactics";
+  });
+})();
+</script>
+
+{% endblock %}

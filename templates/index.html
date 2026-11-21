@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+{% block title %}Dashboard | Shadow Map GRC{% endblock %}
+
+{% block topbar_class %}dashboard-topbar{% endblock %}
+
+{% block topbar_content %}
+<div class="dashboard-header-grid">
+  <section class="dashboard-intro">
+    <div class="page-heading">
+      <div class="eyebrow">SECURITY WORKSPACE</div>
+      <h1>Security Overview</h1>
+      <p class="subtitle">Monitor assessment activity, findings and risk treatment from one workspace.</p>
+    </div>
+    <div class="dashboard-intro-footer">
+      {{ self.topbar_controls() }}
+    </div>
+  </section>
+
+  <section class="dashboard-actions">
+    <div>
+      <span class="dashboard-kicker">WORKSPACE CONTROL CENTRE</span>
+      <h2>Welcome to Shadow Map GRC</h2>
+      <p>Assess. Analyse. Mitigate. Monitor governance, risk and compliance in one workspace.</p>
+    </div>
+    <a class="button dashboard-cta" href="{{ url_for('unified_scan_page') }}">＋ &nbsp; Start Unified Scan</a>
+  </section>
+</div>
+{% endblock %}
+
+{% block content %}
+
+<section class="metric-grid" aria-label="Security overview">
+  <article class="metric-card">
+    <div class="metric-top"><div class="metric-icon">◎</div><div class="metric-label">Nmap scans</div></div>
+    <strong class="metric-value">{{ stats.nmap_total }}</strong>
+    <span class="metric-note">{{ stats.nmap_completed }} completed</span>
+    <div class="progress"><span class="dashboard-progress-fill" data-progress="{{ (stats.nmap_completed * 100 / stats.nmap_total) if stats.nmap_total else 0 }}"></span></div>
+  </article>
+  <article class="metric-card">
+    <div class="metric-top"><div class="metric-icon">⌁</div><div class="metric-label">Firewall scans</div></div>
+    <strong class="metric-value">{{ stats.firewall_total }}</strong>
+    <span class="metric-note">{{ stats.firewall_completed }} completed</span>
+    <div class="progress"><span class="dashboard-progress-fill" data-progress="{{ (stats.firewall_completed * 100 / stats.firewall_total) if stats.firewall_total else 0 }}"></span></div>
+  </article>
+  <article class="metric-card">
+    <div class="metric-top"><div class="metric-icon">▤</div><div class="metric-label">Findings recorded</div></div>
+    <strong class="metric-value">{{ stats.findings_total }}</strong>
+    <span class="metric-note">{{ stats.findings_approved }} approved</span>
+    <div class="progress"><span class="dashboard-progress-fill" data-progress="{{ (stats.findings_approved * 100 / stats.findings_total) if stats.findings_total else 0 }}"></span></div>
+  </article>
+  <article class="metric-card">
+    <div class="metric-top"><div class="metric-icon">⚠</div><div class="metric-label">Pending review</div></div>
+    <strong class="metric-value">{{ stats.findings_pending }}</strong>
+    <span class="metric-note">Findings awaiting a decision</span>
+    <div class="progress"><span class="dashboard-progress-fill" data-progress="{{ (stats.findings_pending * 100 / stats.findings_total) if stats.findings_total else 0 }}"></span></div>
+  </article>
+  <article class="metric-card">
+    <div class="metric-top"><div class="metric-icon">⬡</div><div class="metric-label">Open risks</div></div>
+    <strong class="metric-value">{{ stats.risks_open }}</strong>
+    <span class="metric-note">{{ stats.risks_total }} total assessments</span>
+    <div class="progress"><span class="dashboard-progress-fill" data-progress="{{ (stats.risks_open * 100 / stats.risks_total) if stats.risks_total else 0 }}"></span></div>
+  </article>
+</section>
+
+<div class="split-grid">
+  <section class="panel">
+    <div class="panel-heading">
+      <div><h2>Risk Treatment Follow-up</h2><p class="subtitle">Issues requiring treatment or deadline attention.</p></div>
+      <a class="action-button" href="{{ url_for('risk_register_page') }}">Open Risk Register →</a>
+    </div>
+    <div class="treatment-grid">
+      <article class="treatment-card"><div><span class="label">Missing due dates</span></div><div class="number">{{ stats.risks_missing_due_date }}</div><span class="metric-note">Risks needing a deadline</span></article>
+      <article class="treatment-card"><div><span class="label">Overdue risks</span></div><div class="number">{{ stats.risks_overdue }}</div><span class="metric-note">Past due, not remediated</span></article>
+      <article class="treatment-card"><div><span class="label">In progress</span></div><div class="number">{{ stats.risks_in_progress }}</div><span class="metric-note">Treatment underway</span></article>
+      <article class="treatment-card"><div><span class="label">Remediated</span></div><div class="number">{{ stats.risks_remediated }}</div><span class="metric-note">Marked remediated</span></article>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-heading"><div><h2>Risk Status Overview</h2><p class="subtitle">Current treatment status</p></div></div>
+    {% set risk_total = stats.risks_total %}
+    {% set open_pct = (stats.risks_open * 100 / risk_total) if risk_total else 0 %}
+    {% set progress_pct = (stats.risks_in_progress * 100 / risk_total) if risk_total else 0 %}
+    {% set rem_pct = (stats.risks_remediated * 100 / risk_total) if risk_total else 0 %}
+    <div class="risk-overview">
+      <div class="donut dashboard-risk-donut" data-open-percent="{{ open_pct }}" data-progress-percent="{{ open_pct + progress_pct }}">
+        <div class="donut-center"><strong>{{ risk_total }}</strong><span>total risks</span></div>
+      </div>
+      <div class="legend">
+        <div class="legend-row"><span class="legend-dot dashboard-legend-dot" ></span><span>Open</span><span>{{ stats.risks_open }} ({{ '%.0f'|format(open_pct) }}%)</span></div>
+        <div class="legend-row"><span class="legend-dot dashboard-legend-dot" ></span><span>In progress</span><span>{{ stats.risks_in_progress }} ({{ '%.0f'|format(progress_pct) }}%)</span></div>
+        <div class="legend-row"><span class="legend-dot dashboard-legend-dot" ></span><span>Remediated</span><span>{{ stats.risks_remediated }} ({{ '%.0f'|format(rem_pct) }}%)</span></div>
+      </div>
+    </div>
+  </section>
+</div>
+
+
+
+
+<section class="panel">
+  <div class="panel-heading">
+    <div><h2>Latest 5 Executed Scans</h2><p class="subtitle">The five most recent Nmap, Web Security, Threat Intelligence and Firewall Detection scan batches.</p></div>
+    <a class="action-button" href="{{ url_for('history_page') }}">View scan history →</a>
+  </div>
+  {% if activity %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Module</th><th>Target(s)</th><th>Status</th><th>Date (IST)</th><th>Action</th></tr>
+      </thead>
+      <tbody>
+      {% for item in activity %}
+        <tr>
+          <td>
+            {% if item.module == 'nmap' %}Nmap
+            {% elif item.module == 'web_security' %}Web Security
+            {% elif item.module == 'threat_intel' %}Threat Intelligence
+            {% elif item.module == 'firewall' %}Firewall Detection
+            {% elif item.module == 'zap' %}OWASP ZAP
+            {% else %}{{ item.module|replace('_', ' ')|title }}
+            {% endif %}
+          </td>
+          <td>{{ item.targets or '—' }}</td>
+          <td><span class="status {{ item.status|lower|replace(' ', '-') }}">{{ item.status }}</span></td>
+          <td>{{ item.created_at|datetime }}</td>
+          <td>
+            {% if item.module == 'nmap' %}
+              <a class="button" href="{{ url_for('nmap_batch_results', batch_id=item.id) }}">View</a>
+            {% elif item.module == 'web_security' %}
+              <a class="button" href="{{ url_for('web_security_batch_results', batch_id=item.id) }}">View</a>
+            {% elif item.module == 'threat_intel' %}
+              <a class="button" href="{{ url_for('threat_intel_batch_results', batch_id=item.id) }}">View</a>
+            {% elif item.module == 'firewall' %}
+              <a class="button" href="{{ url_for('firewall_batch_results', batch_id=item.id) }}">View</a>
+            {% elif item.module == 'zap' %}
+              <a class="button" href="{{ url_for('zap_batch_results', batch_id=item.id) }}">View</a>
+            {% else %}—
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty"><strong>No executed scans yet</strong><p>Completed scan activity will appear here.</p></div>
+  {% endif %}
+</section>
+
+
+
+
+
+<div class="authorization"><div class="authorization-icon">ⓘ</div><div><strong>Authorized testing only</strong><p>Use this application only for systems
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+    document.querySelectorAll(".dashboard-progress-fill").forEach((element) => {
+        const value = Number.parseFloat(element.dataset.progress);
+        const percent = Number.isFinite(value)
+            ? Math.max(0, Math.min(100, value))
+            : 0;
+
+        element.style.setProperty("--dashboard-progress", `${percent}%`);
+    });
+
+    const donut = document.querySelector(".dashboard-risk-donut");
+
+    if (donut) {
+        const openValue = Number.parseFloat(donut.dataset.openPercent);
+        const progressValue = Number.parseFloat(donut.dataset.progressPercent);
+
+        const openPercent = Number.isFinite(openValue)
+            ? Math.max(0, Math.min(100, openValue))
+            : 0;
+
+        const progressPercent = Number.isFinite(progressValue)
+            ? Math.max(openPercent, Math.min(100, progressValue))
+            : openPercent;
+
+        donut.style.setProperty("--dashboard-open-percent", `${openPercent}%`);
+        donut.style.setProperty("--dashboard-progress-percent", `${progressPercent}%`);
+    }
+});
+</script>
+
+you own or have explicit permission to assess.</p></div></div>
+{% endblock %}

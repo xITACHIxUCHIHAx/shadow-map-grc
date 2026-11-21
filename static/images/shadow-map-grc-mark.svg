@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">Shadow Map GRC mark</title>
+  <desc id="desc">A blue and silver shield enclosing a world grid and radar target.</desc>
+  <defs>
+    <linearGradient id="shield" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#eaf5ff"/><stop offset=".48" stop-color="#62caff"/><stop offset="1" stop-color="#0878e8"/>
+    </linearGradient>
+    <linearGradient id="blue" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#48d4ff"/><stop offset="1" stop-color="#0875ed"/>
+    </linearGradient>
+    <radialGradient id="glow"><stop offset="0" stop-color="#d8f8ff"/><stop offset=".22" stop-color="#37cfff"/><stop offset="1" stop-color="#0875ed" stop-opacity="0"/></radialGradient>
+    <clipPath id="inside"><path d="M128 24 211 53v62c0 56-34 93-83 119-49-26-83-63-83-119V53z"/></clipPath>
+  </defs>
+  <path d="M128 14 222 47v69c0 65-39 108-94 136-55-28-94-71-94-136V47z" fill="#071a35" stroke="url(#shield)" stroke-width="9" stroke-linejoin="round"/>
+  <g clip-path="url(#inside)">
+    <path d="M28 91c28-30 58-45 100-45s72 15 100 45M25 128h206M42 171c24 21 52 31 86 31s62-10 86-31" fill="none" stroke="#147bd0" stroke-width="2" opacity=".45"/>
+    <ellipse cx="128" cy="122" rx="74" ry="78" fill="none" stroke="#1688df" stroke-width="2" opacity=".5"/>
+    <ellipse cx="128" cy="122" rx="47" ry="78" fill="none" stroke="#1688df" stroke-width="2" opacity=".5"/>
+    <path d="M54 122h148M128 44v156" stroke="#1688df" stroke-width="2" opacity=".5"/>
+    <path d="M83 76c12 8 22 10 29 7 8-3 13 3 17 10 4 7 13 8 18 14 5 7-3 13-12 15-10 2-12 9-9 18 3 9-5 15-13 17-8 2-13 10-17 19-22-13-38-35-42-60-3-18 8-34 29-40zm83 17c17 5 29 17 35 34-10 1-18-3-23-11-5-7-12-8-19-8-6-1-8-8-5-15 3-5 7-3 12 0z" fill="#0b66bd" opacity=".65"/>
+    <circle cx="128" cy="122" r="58" fill="none" stroke="#39c9ff" stroke-width="3" opacity=".9"/>
+    <circle cx="128" cy="122" r="35" fill="none" stroke="#39c9ff" stroke-width="3" opacity=".9"/>
+    <path d="M128 52v140M58 122h140" stroke="#a7edff" stroke-width="3" opacity=".9"/>
+    <path d="M128 122 184 66" stroke="#e5fbff" stroke-width="4" stroke-linecap="round"/>
+    <circle cx="128" cy="122" r="31" fill="url(#glow)"/>
+    <circle cx="128" cy="122" r="8" fill="#e9fdff" stroke="#2ccaff" stroke-width="4"/>
+  </g>
+  <path d="M25 178c46-4 96-28 143-72 18-16 33-32 48-51-8 28-22 54-42 77-40 47-93 72-149 70" fill="none" stroke="url(#blue)" stroke-width="13" stroke-linecap="round"/>
+</svg>

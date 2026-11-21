@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% block title %}Host/IP Register | Shadow Map GRC{% endblock %}
+
+{% block header %}
+<h1>Host/IP Register</h1>
+<p class="subtitle">A consolidated view of assessed IP addresses and website origins. Select a host to review its complete Finding Intelligence report.</p>
+{% endblock %}
+
+{% block content %}
+
+
+<section class="hr-panel">
+  <div class="hr-assessed-heading">
+    <div>
+      <h2 class="hr-assessed-title">Assessed hosts</h2>
+      <p class="hr-muted hr-assessed-description">One entry per unique IP address, hostname, or website origin. Website page URLs under the same origin are grouped together.</p>
+    </div>
+    <form method="post" action="{{ url_for('automatic_risks.finding_intelligence_sync') }}">
+      <button class="hr-btn secondary" type="submit">↻ Sync stored findings</button>
+    </form>
+  </div>
+
+  <div class="hr-toolbar">
+    <div class="hr-field">
+      <label for="host-select">Filter Host Register by IP address or hostname</label>
+      <select id="host-select" aria-label="Filter Host Register by assessed host" {% if not hosts %}disabled{% endif %}>
+        <option value="">All assessed hosts</option>
+        {% for host in hosts %}
+          <option
+            value="{{ host.host|e }}"
+            data-report-url="{{ url_for('automatic_risks.finding_intelligence_host_report', host=host.host) }}"
+          >{{ host.host }} — {{ host.total_findings }} findings</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button type="button" class="hr-btn" id="open-host-report" disabled>Open Host Report</button>
+    <button type="button" class="hr-btn secondary" id="clear-host-filter">Clear selection</button>
+  </div>
+  <p class="hr-muted hr-assessment-note">NVD matches are CVE candidates, not confirmed vulnerabilities. Automated MITRE suggestions are kept separate from analyst-confirmed mappings. Existing ZAP alerts appear when imported into Findings Review.</p>
+</section>
+
+<section class="hr-panel">
+  <div class="hr-register-heading">
+    <h2 class="hr-register-title">Host register</h2>
+    <span class="hr-muted">{{ hosts|length }} host{% if hosts|length != 1 %}s{% endif %}</span>
+  </div>
+
+  <div class="hr-table-wrap">
+    <table class="hr-table">
+      <thead>
+        <tr>
+          <th>Host / IP</th>
+          <th>Findings</th>
+          <th>Severity distribution</th>
+          <th>Validation</th>
+          <th>CVE references</th>
+          <th>MITRE suggestions</th>
+          <th>Report</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for host in hosts %}
+        <tr data-host-key="{{ host.host|e }}">
+          <td>
+            <a href="{{ url_for('automatic_risks.finding_intelligence_host_report', host=host.host) }}">{{ host.host }}</a>
+            {% if host.aliases|length > 1 %}
+              <div class="hr-muted hr-alias-count">
+                {{ host.aliases|length }} stored target aliases
+              </div>
+              <details class="hr-alias-details">
+                <summary class="hr-muted hr-alias-summary">View aliases</summary>
+                <div class="hr-muted hr-alias-list">
+                  {% for alias in host.aliases %}{{ alias }}{% if not loop.last %}<br>{% endif %}{% endfor %}
+                </div>
+              </details>
+            {% endif %}
+          </td>
+          <td><span class="hr-count">{{ host.total_findings }}</span></td>
+          <td>
+            <div class="hr-severity">
+              {% for level in ['Critical','High','Medium','Low','Review'] %}
+                {% if host.severity_counts.get(level, 0) %}
+                  <span class="hr-pill">{{ level }}: {{ host.severity_counts.get(level) }}</span>
+                {% endif %}
+              {% endfor %}
+            </div>
+          </td>
+          <td>
+            <span class="hr-count">{{ host.validation_counts.get('Evidence-supported', 0) }}</span>
+            <span class="hr-muted">supported</span><br>
+            <span class="hr-count">{{ host.validation_counts.get('Needs-validation', 0) }}</span>
+            <span class="hr-muted">needs validation</span><br>
+            <span class="hr-count">{{ host.validation_counts.get('Unreviewed', 0) }}</span>
+            <span class="hr-muted">unreviewed</span>
+          </td>
+          <td><span class="hr-count">{{ host.cve_candidates }}</span></td>
+          <td><span class="hr-count">{{ host.mitre_suggestions }}</span></td>
+          <td>
+            <a class="action-button" href="{{ url_for('automatic_risks.finding_intelligence_host_report', host=host.host) }}">Open Host Report →</a>
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="7" class="hr-empty">
+          {% if search %}
+            No hosts match "{{ search }}". Try another IP address or hostname.
+          {% else %}
+            No hosts have stored findings yet. Run an authorized assessment or sync completed scan sources.
+          {% endif %}
+        </td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<script>
+(function () {
+  const select = document.getElementById("host-select");
+  const openButton = document.getElementById("open-host-report");
+  const clearButton = document.getElementById("clear-host-filter");
+  const rows = Array.from(document.querySelectorAll(".hr-table tbody tr[data-host-key]"));
+
+  if (!select || !openButton || !clearButton) return;
+
+  function applyHostFilter() {
+    const selectedHost = select.value;
+    const selectedOption = select.options[select.selectedIndex];
+
+    rows.forEach(function (row) {
+      row.hidden = Boolean(selectedHost) && row.dataset.hostKey !== selectedHost;
+    });
+
+    openButton.disabled = !selectedHost;
+    openButton.dataset.reportUrl = selectedOption
+      ? selectedOption.dataset.reportUrl || ""
+      : "";
+  }
+
+  select.addEventListener("change", applyHostFilter);
+
+  openButton.addEventListener("click", function () {
+    if (openButton.dataset.reportUrl) {
+      window.location.href = openButton.dataset.reportUrl;
+    }
+  });
+
+  clearButton.addEventListener("click", function () {
+    select.value = "";
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% block title %}MITRE ATT&CK Findings Report | Shadow Map GRC{% endblock %}
+
+{% block header %}
+<h1>MITRE ATT&CK Findings Report</h1>
+<p class="subtitle">
+  Review automated suggestions and analyst-selected mappings for this target.
+</p>
+{% endblock %}
+
+{% block content %}
+<div class="report-page">
+<section class="hr-panel">
+  <div class="attack-section-heading">
+    <div>
+      <h2>Scan details</h2>
+      <p class="hr-muted">
+        Scan ID: <strong>{{ selected_scan.scan_id }}</strong>
+      </p>
+      <p class="hr-muted">
+        Exact target: <strong>{{ target_report_target }}</strong>
+      </p>
+    </div>
+    <a class="hr-btn" href="{{ url_for('automatic_risks.attack_coverage_page') }}">
+      Back to ATT&CK Coverage
+    </a>
+  </div>
+
+  <div class="attack-summary-grid">
+    <div class="attack-stat">
+      <div class="attack-stat-label">MITRE-mapped findings</div>
+      <div class="attack-stat-value">{{ target_report_findings|length }}</div>
+    </div>
+  </div>
+
+  <div class="attack-note hr-muted">
+    This report includes MITRE-mapped findings for the exact stored target
+    across its scan history. Automated suggestions are detection assistance
+    only; they are not analyst-confirmed mappings and do not contribute to
+    confirmed ATT&CK coverage.
+  </div>
+</section>
+
+<section class="hr-panel">
+  <div class="attack-section-heading">
+    <div>
+      <h2>MITRE ATT&CK findings</h2>
+      <p class="hr-muted">
+        Automated suggestions and analyst mappings are shown separately.
+      </p>
+    </div>
+    <span class="hr-muted">{{ target_report_findings|length }} findings</span>
+  </div>
+
+  <div class="attack-table-wrap">
+    <table class="attack-table">
+      <thead>
+        <tr>
+          <th>Finding</th>
+          <th>Source / Severity / Status</th>
+          <th>Automated suggestion</th>
+          <th>Analyst mapping</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for finding in target_report_findings %}
+          <tr>
+            <td>
+              <strong>#{{ finding.id }} — {{ finding.title }}</strong>
+              <div class="attack-muted">
+                {{ finding.description or "No description recorded." }}
+              </div>
+              {% if finding.evidence %}
+                <details class="attack-muted" style="margin-top: 6px;">
+                  <summary style="cursor: pointer;">Evidence</summary>
+                  <div style="margin-top: 4px;">{{ finding.evidence }}</div>
+                </details>
+              {% endif %}
+            </td>
+            <td>
+              {{ finding.source or "Unknown" }}
+              <div class="attack-muted">
+                Severity: {{ finding.suggested_severity or "Not set" }}
+              </div>
+              <div class="attack-muted">
+                Finding status: {{ finding.finding_status or "Unknown" }}
+              </div>
+            </td>
+            <td>
+              {% if finding.auto_mitre_tactic or finding.auto_mitre_technique %}
+                <strong>{{ finding.auto_mitre_technique or "Technique not suggested" }}</strong>
+                <div>{{ finding.auto_mitre_tactic or "Tactic not suggested" }}</div>
+                <div class="attack-muted">
+                  Confidence: {{ finding.auto_mitre_confidence or "Unassessed" }}
+                </div>
+                {% if finding.auto_mitre_rationale %}
+                  <div class="attack-muted">
+                    Rationale: {{ finding.auto_mitre_rationale }}
+                  </div>
+                {% endif %}
+              {% else %}
+                <span class="attack-muted">No automated suggestion</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if finding.analyst_mitre_tactic or finding.mitre_technique %}
+                {% if finding.mitre_technique %}
+                  <strong>{{ finding.mitre_technique }}</strong>
+                {% endif %}
+                {% if finding.analyst_mitre_tactic %}
+                  <div>{{ finding.analyst_mitre_tactic }}</div>
+                {% endif %}
+              {% else %}
+                <span class="attack-muted">No analyst-selected mapping</span>
+              {% endif %}
+              <div class="attack-muted">
+                Validation: {{ finding.validation_status or "Unreviewed" }}
+              </div>
+              <div class="attack-muted">
+                Confidence: {{ finding.mapping_confidence or "Unassessed" }}
+              </div>
+              {% if finding.mapping_rationale %}
+                <div class="attack-muted">
+                  Rationale: {{ finding.mapping_rationale }}
+                </div>
+              {% endif %}
+            </td>
+          </tr>
+        {% else %}
+          <tr>
+            <td colspan="4" class="attack-empty">
+              No MITRE ATT&CK-mapped findings are recorded for this exact target.
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+</div>
+{% endblock %}

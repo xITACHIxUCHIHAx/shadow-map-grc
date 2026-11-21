@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% block title %}Web Security | Shadow Map GRC{% endblock %}
+
+{% block header %}
+<h1>Web Security</h1>
+<p class="subtitle">
+    Assess authorized websites and web applications using Shadow Map GRC.
+</p>
+{% endblock %}
+
+{% block content %}
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <section class="panel">
+        {% for category, message in messages %}
+        <div class="notice">
+            <strong>{{ category|title }}:</strong> {{ message }}
+        </div>
+        {% endfor %}
+    </section>
+    {% endif %}
+{% endwith %}
+
+<section class="panel">
+    <div class="panel-heading">
+        <h2>Web Application Security Assessment</h2>
+    </div>
+
+    <p>
+        Use Unified Scan to assess authorized public or private web
+        applications and review the resulting security findings.
+    </p>
+
+    <ul>
+        <li>HTTP and HTTPS security configuration checks</li>
+        <li>Security headers and cookie configuration analysis</li>
+        <li>Website crawling and endpoint discovery</li>
+        <li>Forms, parameters and JavaScript resource discovery</li>
+        <li>Security findings for GRC review</li>
+    </ul>
+
+    <div class="button-row">
+        <a class="button" href="{{ url_for('unified_scan_page') }}">
+            Open Unified Scan
+        </a>
+    </div>
+
+    <p class="muted small">
+        Select Web Security in Unified Scan to run the native
+        Shadow Map GRC assessment.
+    </p>
+</section>
+
+{% endblock %}

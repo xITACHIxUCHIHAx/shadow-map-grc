@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+
+{% block title %}OWASP ZAP Batch Results | Shadow Map GRC{% endblock %}
+
+{% block header %}
+<h1>OWASP ZAP Batch Results</h1>
+<p class="subtitle">Target-by-target results for ZAP batch #{{ batch.id }}.</p>
+{% endblock %}
+
+{% block content %}
+<div class="report-page">
+<section class="panel history-section">
+    <div class="panel-heading">
+        <div>
+            <h2>Batch #{{ batch.id }}</h2>
+            <p class="subtitle">Profile: {{ batch.profile or 'Default' }}</p>
+        </div>
+        <span class="status">{{ batch.status }}</span>
+    </div>
+    <div class="table-wrap">
+        <table>
+            <tbody>
+                <tr><th>Total targets</th><td>{{ batch.total_targets }}</td></tr>
+                <tr><th>Completed</th><td>{{ batch.completed_targets }}</td></tr>
+                <tr><th>Partial</th><td>{{ batch.partial_targets }}</td></tr>
+                <tr><th>Failed</th><td>{{ batch.failed_targets }}</td></tr>
+                <tr><th>Skipped</th><td>{{ batch.skipped_targets }}</td></tr>
+                <tr><th>Created</th><td>{{ batch.created_at|datetime if batch.created_at else 'Not recorded' }}</td></tr>
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<section class="panel history-section">
+    <div class="panel-heading">
+        <div>
+            <h2>Target results <span class="history-count">{{ items|length }}</span></h2>
+            <p class="subtitle">Open the saved alert evidence for each completed or partial target.</p>
+        </div>
+    </div>
+
+    {% if items %}
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Target</th>
+                    <th>Status</th>
+                    <th>Duration</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in items %}
+                <tr>
+                    <td>{{ item.position }}</td>
+                    <td class="history-target">{{ item.target }}</td>
+                    <td>{{ item.result_status or item.status }}</td>
+                    <td>{{ '%.2f s'|format(item.result_duration) if item.result_duration is not none else 'Not recorded' }}</td>
+                    <td>
+                        {% if item.result_record_id and item.result_type == 'zap' %}
+                        <a class="history-button" href="{{ url_for('zap_scan_result', scan_id=item.result_record_id) }}">View Alerts</a>
+                        {% elif item.error or item.result_error %}
+                        <span class="muted small">{{ item.error or item.result_error }}</span>
+                        {% else %}
+                        <span class="muted small">No saved result</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="empty">No target records are available for this batch.</p>
+    {% endif %}
+</section>
+
+<div class="history-actions">
+    <a class="history-button" href="{{ url_for('history_page') }}">Back to Scan History</a>
+    <a class="history-button" href="{{ url_for('unified_scan_page') }}">Unified Scan</a>
+</div>
+</div>
+{% endblock %}
