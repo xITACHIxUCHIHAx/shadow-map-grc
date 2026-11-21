@@ -81,7 +81,7 @@ echo Skipping Nmap. Network scanning will be unavailable.
 set "JAVA_OK="
 where java >nul 2>nul
 if not errorlevel 1 (
-    powershell -NoProfile -Command "$v = (java -version 2^>^&1 ^| Select-Object -First 1).ToString(); $m = [regex]::Match($v, 'version.{0,2}([0-9]+)'); if ($m.Success -and [int]$m.Groups[1].Value -ge 17) { exit 0 }; exit 1"
+    powershell -NoProfile -Command "$v = (java -version 2>&1 | Select-Object -First 1).ToString(); $m = [regex]::Match($v, 'version.{0,2}([0-9]+)'); if ($m.Success -and [int]$m.Groups[1].Value -ge 17) { exit 0 }; exit 1"
     if not errorlevel 1 set "JAVA_OK=1"
 )
 if defined JAVA_OK goto setup_python
