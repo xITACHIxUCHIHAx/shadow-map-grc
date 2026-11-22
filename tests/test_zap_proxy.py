@@ -911,7 +911,7 @@ class ZapAutomaticStartupTests(unittest.TestCase):
         popen.assert_not_called()
 
     @patch("scanner.zap_proxy.time.sleep")
-    @patch("scanner.zap_proxy.time.monotonic", side_effect=[0, 1])
+    @patch("scanner.zap_proxy.time.monotonic", side_effect=[0, 100, 101])
     @patch("scanner.zap_proxy.subprocess.Popen")
     @patch("scanner.zap_proxy.shutil.which", return_value="/usr/bin/java")
     @patch("scanner.zap_proxy.subprocess.run")

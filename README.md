@@ -10,7 +10,7 @@ Download the project before installing and running it.
 
 ### Method 1: Download ZIP (Recommended for beginners)
 
-1. Open the [Shadow Map GRC GitHub repository](https://github.com/xITACHIxUCHIHAx/shadow-map-grc).
+1. Open the [Shadow Map GRC GitHub repository](https://github.com/xITACHIxUCHIHAx/shadow-map-grc-v2).
 2. Click **Code**.
 3. Select **Download ZIP**.
 4. Extract the downloaded ZIP file.
@@ -20,18 +20,18 @@ Download the project before installing and running it.
 
 **Windows (PowerShell or Command Prompt):**
 
-    git clone https://github.com/xITACHIxUCHIHAx/shadow-map-grc.git
-    cd shadow-map-grc
+    git clone https://github.com/xITACHIxUCHIHAx/shadow-map-grc-v2.git
+    cd shadow-map-grc-v2
 
 **macOS (Terminal):**
 
-    git clone https://github.com/xITACHIxUCHIHAx/shadow-map-grc.git
-    cd shadow-map-grc
+    git clone https://github.com/xITACHIxUCHIHAx/shadow-map-grc-v2.git
+    cd shadow-map-grc-v2
 
 **Linux (Terminal):**
 
-    git clone https://github.com/xITACHIxUCHIHAx/shadow-map-grc.git
-    cd shadow-map-grc
+    git clone https://github.com/xITACHIxUCHIHAx/shadow-map-grc-v2.git
+    cd shadow-map-grc-v2
 
 To update an existing Git clone later:
 
@@ -42,6 +42,8 @@ To update an existing Git clone later:
 - Dashboard and scan history
 - Unified security assessments
 - Nmap network and service scanning
+- LAN Monitor and local network discovery
+- Cross-platform network interface and gateway detection (Linux, Windows, and macOS)
 - Web security assessment and read-only discovery
 - OWASP ZAP integration and proxy management
 - Firewall assessment

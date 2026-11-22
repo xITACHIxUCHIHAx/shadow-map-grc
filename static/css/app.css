@@ -9064,3 +9064,24 @@ html[data-theme] body .main .trace-pagination a.button:visited {
     -webkit-text-fill-color: var(--button-primary-text, #ffffff) !important;
     text-decoration: none !important;
 }
+
+
+
+
+/* Reports dropdown: match shared custom selects in both themes */
+html[data-theme] body .page-content .report-page .sm-select .sm-select-trigger {
+    background: var(--surface-raised) !important;
+    color: var(--text) !important;
+    -webkit-text-fill-color: var(--text) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 11px !important;
+    box-shadow: none !important;
+    height: 40px !important;
+    min-height: 40px !important;
+    padding: 9px 15px !important;
+}
+
+html[data-theme] body .page-content .report-page .sm-select .sm-select-trigger:hover:not(:disabled) {
+    background: var(--surface-raised) !important;
+    border-color: var(--accent) !important;
+}

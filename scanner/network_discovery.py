@@ -3,6 +3,8 @@
 import ipaddress
 import json
 import math
+import platform
+import psutil
 import re
 import shutil
 import socket
@@ -55,65 +57,153 @@ def _run_ip_json(command):
         ) from exc
 
 
+def _get_default_gateways():
+    """Return default gateways keyed by network interface name."""
+    system = platform.system()
+    gateways = {}
+
+    if system == "Linux":
+        ip_binary = shutil.which("ip")
+        if ip_binary:
+            try:
+                routes = _run_ip_json([
+                    ip_binary, "-j", "route", "show", "default"
+                ])
+                return {
+                    route["dev"]: route["gateway"]
+                    for route in routes
+                    if route.get("dev") and route.get("gateway")
+                }
+            except NetworkDiscoveryError:
+                pass
+
+        # Linux fallback when the ip command is unavailable.
+        try:
+            with open("/proc/net/route", encoding="ascii") as route_file:
+                next(route_file, None)
+                for line in route_file:
+                    fields = line.split()
+                    if len(fields) < 4 or fields[1] != "00000000":
+                        continue
+                    if not (int(fields[3], 16) & 0x2):
+                        continue
+                    gateway = socket.inet_ntoa(
+                        struct.pack("<I", int(fields[2], 16))
+                    )
+                    if gateway != "0.0.0.0":
+                        gateways[fields[0]] = gateway
+        except (OSError, ValueError, struct.error):
+            pass
+
+    elif system == "Windows":
+        powershell = shutil.which("powershell") or shutil.which("pwsh")
+        if powershell:
+            script = (
+                "Get-NetIPConfiguration | "
+                "Where-Object { $_.IPv4DefaultGateway } | "
+                "ForEach-Object { "
+                "[PSCustomObject]@{ "
+                "name=$_.InterfaceAlias; "
+                "gateway=$_.IPv4DefaultGateway.NextHop "
+                "} } | ConvertTo-Json -Compress"
+            )
+            try:
+                result = subprocess.run(
+                    [powershell, "-NoProfile", "-NonInteractive",
+                     "-Command", script],
+                    capture_output=True,
+                    text=True,
+                    timeout=15,
+                    check=False,
+                )
+                if result.returncode == 0 and result.stdout.strip():
+                    data = json.loads(result.stdout)
+                    if isinstance(data, dict):
+                        data = [data]
+                    gateways = {
+                        item["name"]: item["gateway"]
+                        for item in data
+                        if item.get("name") and item.get("gateway")
+                    }
+            except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError):
+                pass
+
+    elif system == "Darwin":
+        route_binary = shutil.which("route") or "/sbin/route"
+        try:
+            result = subprocess.run(
+                [route_binary, "-n", "get", "default"],
+                capture_output=True,
+                text=True,
+                timeout=15,
+                check=False,
+            )
+            if result.returncode == 0:
+                interface_name = None
+                gateway = None
+                for line in result.stdout.splitlines():
+                    key, separator, value = line.partition(":")
+                    if not separator:
+                        continue
+                    if key.strip() == "interface":
+                        interface_name = value.strip()
+                    elif key.strip() == "gateway":
+                        gateway = value.strip()
+                if interface_name and gateway:
+                    gateways[interface_name] = gateway
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+
+    return gateways
+
+
 def get_network_interfaces():
     """Return active non-loopback IPv4 interfaces and default gateways."""
-    ip_binary = shutil.which("ip")
-    if not ip_binary:
-        raise NetworkDiscoveryError(
-            "The ip command was not found. Install iproute2."
-        )
-
-    interface_data = _run_ip_json([
-        ip_binary, "-j", "-4", "addr", "show", "up"
-    ])
-
     try:
-        routes = _run_ip_json([
-            ip_binary, "-j", "route", "show", "default"
-        ])
-    except NetworkDiscoveryError:
-        routes = []
+        addresses_by_interface = psutil.net_if_addrs()
+        stats_by_interface = psutil.net_if_stats()
+    except (OSError, psutil.Error) as exc:
+        raise NetworkDiscoveryError(
+            f"Could not inspect local network interfaces: {exc}"
+        ) from exc
 
-    gateways = {
-        route.get("dev"): route.get("gateway")
-        for route in routes
-        if route.get("dev") and route.get("gateway")
-    }
-
+    gateways = _get_default_gateways()
     interfaces = []
 
-    for interface in interface_data:
-        name = interface.get("ifname")
-        flags = interface.get("flags", [])
+    for name, addresses in addresses_by_interface.items():
+        stats = stats_by_interface.get(name)
 
-        if not name or name == "lo" or "UP" not in flags:
+        if (
+            not name
+            or name.lower() in {"lo", "lo0"}
+            or stats is None
+            or not stats.isup
+        ):
             continue
 
-        for address in interface.get("addr_info", []):
-            if address.get("family") != "inet":
+        for address in addresses:
+            if address.family != socket.AF_INET:
                 continue
 
-            local_address = address.get("local")
-            prefix_length = address.get("prefixlen")
+            local_address = address.address
+            netmask = address.netmask
 
             try:
-                network = ipaddress.ip_interface(
-                    f"{local_address}/{prefix_length}"
-                ).network
-            except (ValueError, TypeError):
-                continue
+                ip = ipaddress.ip_address(local_address)
+                if ip.is_loopback or ip.is_link_local:
+                    continue
 
-            if (
-                ipaddress.ip_address(local_address).is_loopback
-                or ipaddress.ip_address(local_address).is_link_local
-            ):
+                network_interface = ipaddress.ip_interface(
+                    f"{local_address}/{netmask}"
+                )
+            except (ValueError, TypeError):
                 continue
 
             interfaces.append({
                 "name": name,
                 "address": local_address,
-                "prefix_length": prefix_length,
-                "network": str(network),
+                "prefix_length": network_interface.network.prefixlen,
+                "network": str(network_interface.network),
                 "gateway": gateways.get(name),
             })
 

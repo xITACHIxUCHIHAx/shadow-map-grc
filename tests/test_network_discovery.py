@@ -1,5 +1,6 @@
 import json
 import subprocess
+import socket
 import unittest
 from unittest.mock import patch, Mock
 
@@ -49,85 +50,124 @@ SAMPLE_NMAP_XML = """<?xml version="1.0"?>
 
 class TestNetworkInterfaceEnumeration(unittest.TestCase):
 
-    def test_returns_active_non_loopback_ipv4_interfaces(self):
-        which_patcher = patch(
-            "scanner.network_discovery.shutil.which",
-            return_value="/usr/sbin/ip",
-        )
-        run_patcher = patch("scanner.network_discovery.subprocess.run")
+    @patch(
+        "scanner.network_discovery._get_default_gateways",
+        return_value={"eth0": "192.168.1.1"},
+    )
+    @patch("scanner.network_discovery.psutil.net_if_stats")
+    @patch("scanner.network_discovery.psutil.net_if_addrs")
+    def test_returns_active_non_loopback_ipv4_interfaces(
+        self, mock_addresses, mock_stats, mock_gateways
+    ):
+        mock_addresses.return_value = {
+            "lo": [
+                Mock(
+                    family=socket.AF_INET,
+                    address="127.0.0.1",
+                    netmask="255.0.0.0",
+                )
+            ],
+            "eth0": [
+                Mock(
+                    family=socket.AF_INET,
+                    address="192.168.1.10",
+                    netmask="255.255.255.0",
+                )
+            ],
+            "eth1": [
+                Mock(
+                    family=socket.AF_INET,
+                    address="10.0.0.10",
+                    netmask="255.255.255.0",
+                )
+            ],
+        }
+        mock_stats.return_value = {
+            "lo": Mock(isup=True),
+            "eth0": Mock(isup=True),
+            "eth1": Mock(isup=False),
+        }
 
-        which_patcher.start()
-        self.addCleanup(which_patcher.stop)
+        result = discovery.get_network_interfaces()
 
-        mock_run = run_patcher.start()
-        self.addCleanup(run_patcher.stop)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["name"], "eth0")
+        self.assertEqual(result[0]["address"], "192.168.1.10")
+        self.assertEqual(result[0]["prefix_length"], 24)
+        self.assertEqual(result[0]["network"], "192.168.1.0/24")
+        self.assertEqual(result[0]["gateway"], "192.168.1.1")
+        mock_addresses.assert_called_once()
+        mock_stats.assert_called_once()
+        mock_gateways.assert_called_once()
 
-        mock_run.side_effect = [
-            Mock(
-                returncode=0,
-                stdout=json.dumps([
-                    {
-                        "ifname": "lo",
-                        "flags": ["LOOPBACK", "UP"],
-                        "addr_info": [
-                            {
-                                "family": "inet",
-                                "local": "127.0.0.1",
-                                "prefixlen": 8,
-                                "scope": "host",
-                            }
-                        ],
-                    },
-                    {
-                        "ifname": "eth0",
-                        "flags": ["BROADCAST", "UP"],
-                        "addr_info": [
-                            {
-                                "family": "inet",
-                                "local": "192.168.1.10",
-                                "prefixlen": 24,
-                                "scope": "global",
-                            }
-                        ],
-                    },
-                    {
-                        "ifname": "eth1",
-                        "flags": ["BROADCAST"],
-                        "addr_info": [
-                            {
-                                "family": "inet",
-                                "local": "10.0.0.10",
-                                "prefixlen": 24,
-                                "scope": "global",
-                            }
-                        ],
-                    },
-                ]),
-                stderr="",
-            ),
-            Mock(
-                returncode=0,
-                stdout=json.dumps([
-                    {"dev": "eth0", "gateway": "192.168.1.1"}
-                ]),
-                stderr="",
-            ),
-        ]
+    @patch(
+        "scanner.network_discovery._get_default_gateways",
+        return_value={},
+    )
+    @patch("scanner.network_discovery.psutil.net_if_stats")
+    @patch("scanner.network_discovery.psutil.net_if_addrs")
+    @patch("scanner.network_discovery.shutil.which", return_value=None)
+    def test_interface_discovery_does_not_require_ip_command(
+        self, mock_which, mock_addresses, mock_stats, mock_gateways
+    ):
+        mock_addresses.return_value = {
+            "eth0": [
+                Mock(
+                    family=socket.AF_INET,
+                    address="192.168.1.10",
+                    netmask="255.255.255.0",
+                )
+            ]
+        }
+        mock_stats.return_value = {"eth0": Mock(isup=True)}
 
         result = discovery.get_network_interfaces()
 
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0]["name"], "eth0")
         self.assertEqual(result[0]["network"], "192.168.1.0/24")
-        self.assertEqual(result[0]["address"], "192.168.1.10")
-        self.assertEqual(result[0]["gateway"], "192.168.1.1")
-        self.assertEqual(mock_run.call_count, 2)
 
+    @patch("scanner.network_discovery.subprocess.run")
+    @patch("scanner.network_discovery.shutil.which", return_value="powershell")
+    @patch("scanner.network_discovery.platform.system", return_value="Windows")
+    def test_windows_default_gateway_discovery(
+        self, mock_system, mock_which, mock_run
+    ):
+        mock_run.return_value = Mock(
+            returncode=0,
+            stdout=json.dumps({
+                "name": "Ethernet",
+                "gateway": "192.168.1.1",
+            }),
+            stderr="",
+        )
+
+        result = discovery._get_default_gateways()
+
+        self.assertEqual(result, {"Ethernet": "192.168.1.1"})
+        mock_run.assert_called_once()
+
+    @patch("scanner.network_discovery.subprocess.run")
     @patch("scanner.network_discovery.shutil.which", return_value=None)
-    def test_missing_ip_command_raises_error(self, mock_which):
-        with self.assertRaises(discovery.NetworkDiscoveryError):
-            discovery.get_network_interfaces()
+    @patch("scanner.network_discovery.platform.system", return_value="Darwin")
+    def test_macos_default_gateway_discovery(
+        self, mock_system, mock_which, mock_run
+    ):
+        mock_run.return_value = Mock(
+            returncode=0,
+            stdout=(
+                "   route to: default\n"
+                "destination: default\n"
+                "    gateway: 192.168.1.1\n"
+                "  interface: en0\n"
+            ),
+            stderr="",
+        )
 
+        result = discovery._get_default_gateways()
+
+        self.assertEqual(result, {"en0": "192.168.1.1"})
+        mock_run.assert_called_once()
 
 class TestSubnetValidation(unittest.TestCase):
 

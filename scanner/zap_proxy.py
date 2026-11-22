@@ -1114,7 +1114,7 @@ def ensure_zap_running(endpoint=None):
         raise ZapProxyError(f"Failed to start OWASP ZAP: {exc}") from exc
 
     # ZAP may need extra time on first launch to initialize its add-ons.
-    deadline = time.monotonic() + 90
+    deadline = time.monotonic() + 180
     last_error = None
 
     while time.monotonic() < deadline:
