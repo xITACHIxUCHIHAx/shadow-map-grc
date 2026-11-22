@@ -1,3 +1,4 @@
+import ctypes
 import unittest
 import tempfile
 from pathlib import Path
@@ -16,6 +17,7 @@ from scanner.zap_proxy import (
     ensure_zap_running,
     get_api_key,
     _process_matches_managed_zap,
+    _split_windows_command_line,
     _write_managed_process_record,
     _read_managed_process_record,
     shutdown_managed_zap,
@@ -437,6 +439,51 @@ class ZapScanLifecycleTests(unittest.TestCase):
 
 
 class ZapManagedProcessIdentityTests(unittest.TestCase):
+    def test_windows_command_line_parser_preserves_quoted_profile_path(self):
+        expected = [
+            "java.exe",
+            "-daemon",
+            "-host",
+            "127.0.0.1",
+            "-port",
+            "8090",
+            "-dir",
+            r"C:\Users\ITACHI\AppData\Local\ShadowMapGRC\tools\zap-home",
+        ]
+
+        native_arguments = (
+            ctypes.c_wchar_p * len(expected)
+        )(*expected)
+
+        shell32 = Mock()
+        kernel32 = Mock()
+
+        def command_line_to_argv(_command_line, count_pointer):
+            ctypes.cast(
+                count_pointer, ctypes.POINTER(ctypes.c_int)
+            )[0] = len(expected)
+            return ctypes.cast(
+                native_arguments,
+                ctypes.POINTER(ctypes.c_wchar_p),
+            )
+
+        shell32.CommandLineToArgvW.side_effect = command_line_to_argv
+
+        with patch(
+            "scanner.zap_proxy.ctypes.WinDLL",
+            side_effect=[shell32, kernel32],
+            create=True,
+        ):
+            result = _split_windows_command_line(
+                '"java.exe" -daemon -host 127.0.0.1 -port 8090 '
+                '"-dir" "C:\\Users\\ITACHI\\AppData\\Local\\'
+                'ShadowMapGRC\\tools\\zap-home"'
+            )
+
+        self.assertEqual(result, expected)
+        kernel32.LocalFree.assert_called_once()
+
+
     def test_accepts_matching_managed_process(self):
         with tempfile.TemporaryDirectory() as temporary:
             zap_home = Path(temporary) / "zap-home"
@@ -666,6 +713,24 @@ class ZapManagedSessionLifecycleTests(unittest.TestCase):
                 ZapProxyError, "incomplete initialization"
             ):
                 _prepare_managed_zap_session(zap_home)
+
+    def test_interrupted_initialization_with_database_reopens_existing_session(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            zap_home = Path(temporary) / "zap-home"
+            self._create_session_files(zap_home)
+            _write_managed_session_manifest(zap_home, "initializing")
+
+            command_args = _prepare_managed_zap_session(zap_home)
+
+            self.assertEqual(
+                command_args,
+                ["-session", "shadow-map-grc.session"],
+            )
+            self.assertTrue(_managed_session_artifacts_exist(zap_home))
+            self.assertEqual(
+                _read_managed_session_manifest(zap_home)["status"],
+                "initializing",
+            )
 
     def test_missing_session_database_is_not_recreated(self):
         with tempfile.TemporaryDirectory() as temporary:

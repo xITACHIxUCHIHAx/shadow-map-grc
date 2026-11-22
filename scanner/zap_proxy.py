@@ -1,5 +1,6 @@
 """Safe, optional connection helpers for a local OWASP ZAP instance."""
 
+import ctypes
 import ipaddress
 import json
 import os
@@ -658,11 +659,21 @@ def _prepare_managed_zap_session(zap_home):
     record = _read_managed_session_manifest(zap_home)
 
     if record is not None:
+        if record["status"] == "initializing":
+            if not _managed_session_artifacts_exist(zap_home):
+                raise ZapProxyError(
+                    "The managed ZAP session has incomplete initialization. "
+                    "Its database files are missing, so it was not recreated "
+                    "or overwritten."
+                )
+
+            # Resume the existing database; never create a replacement.
+            return ["-session", SESSION_NAME]
+
         if record["status"] != "ready":
             raise ZapProxyError(
-                "The managed ZAP session has incomplete initialization. "
-                "It was not recreated or overwritten. Inspect the ZAP logs "
-                "and session files before recovery."
+                "The managed ZAP session has an invalid initialization state. "
+                "It was not recreated or overwritten."
             )
 
         if not _managed_session_artifacts_exist(zap_home):
@@ -817,6 +828,47 @@ def _read_managed_process_record():
     }
 
 
+def _split_windows_command_line(command_line):
+    """Split a Windows process command line using the native Windows API."""
+    if not command_line:
+        return None
+
+    try:
+        shell32 = ctypes.WinDLL("shell32", use_last_error=True)
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+
+        command_line_to_argv = shell32.CommandLineToArgvW
+        command_line_to_argv.argtypes = [
+            ctypes.c_wchar_p,
+            ctypes.POINTER(ctypes.c_int),
+        ]
+        command_line_to_argv.restype = ctypes.POINTER(ctypes.c_wchar_p)
+
+        local_free = kernel32.LocalFree
+        local_free.argtypes = [ctypes.c_void_p]
+        local_free.restype = ctypes.c_void_p
+
+        argument_count = ctypes.c_int()
+        arguments = command_line_to_argv(
+            command_line,
+            ctypes.byref(argument_count),
+        )
+
+        if not arguments:
+            return None
+
+        try:
+            return [
+                arguments[index]
+                for index in range(argument_count.value)
+            ]
+        finally:
+            local_free(ctypes.cast(arguments, ctypes.c_void_p))
+
+    except (AttributeError, OSError, TypeError, ValueError):
+        return None
+
+
 def _get_process_command_line(pid):
     """Read a process command line using the host operating system."""
     system = platform.system().lower()
@@ -866,7 +918,7 @@ def _get_process_command_line(pid):
             )
             if result.returncode != 0 or not result.stdout.strip():
                 return None
-            return shlex.split(result.stdout.strip(), posix=False)
+            return _split_windows_command_line(result.stdout.strip())
 
     except (OSError, subprocess.SubprocessError, ValueError):
         return None
@@ -1126,8 +1178,9 @@ def ensure_zap_running(endpoint=None):
                     "profile could not be verified."
                 )
 
-            if session_args[0] == "-newsession":
-                _mark_managed_zap_session_ready(zap_home)
+            # Mark both newly created and safely resumed sessions ready,
+            # but only after API readiness and managed-process verification.
+            _mark_managed_zap_session_ready(zap_home)
 
             return connection
         except ZapProxyError as exc:

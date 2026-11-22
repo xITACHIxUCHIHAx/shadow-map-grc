@@ -10,7 +10,7 @@ Download the project before installing and running it.
 
 ### Method 1: Download ZIP (Recommended for beginners)
 
-1. Open the [Shadow Map GRC GitHub repository](https://github.com/xITACHIxUCHIHAx/shadow-map-grc-v2).
+1. Open the [Shadow Map GRC GitHub repository](https://github.com/xITACHIxUCHIHAx/shadow-map-grc).
 2. Click **Code**.
 3. Select **Download ZIP**.
 4. Extract the downloaded ZIP file.
@@ -20,18 +20,18 @@ Download the project before installing and running it.
 
 **Windows (PowerShell or Command Prompt):**
 
-    git clone https://github.com/xITACHIxUCHIHAx/shadow-map-grc-v2.git
-    cd shadow-map-grc-v2
+    git clone https://github.com/xITACHIxUCHIHAx/shadow-map-grc.git
+    cd shadow-map-grc
 
 **macOS (Terminal):**
 
-    git clone https://github.com/xITACHIxUCHIHAx/shadow-map-grc-v2.git
-    cd shadow-map-grc-v2
+    git clone https://github.com/xITACHIxUCHIHAx/shadow-map-grc.git
+    cd shadow-map-grc
 
 **Linux (Terminal):**
 
-    git clone https://github.com/xITACHIxUCHIHAx/shadow-map-grc-v2.git
-    cd shadow-map-grc-v2
+    git clone https://github.com/xITACHIxUCHIHAx/shadow-map-grc.git
+    cd shadow-map-grc
 
 To update an existing Git clone later:
 
