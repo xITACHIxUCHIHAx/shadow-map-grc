@@ -47,6 +47,74 @@ Shadow Map GRC is a Flask-based application that combines security assessment, r
 
 The supplied Docker image includes Python, Nmap, Java 21 and OWASP ZAP 2.17.0.
 
+## Installing Git
+
+Git is required to clone the Shadow Map GRC repository.
+
+### Windows
+
+```powershell
+winget install --id Git.Git -e --source winget
+```
+
+Official installer: https://git-scm.com/downloads/win
+
+### Linux
+
+**Ubuntu / Debian / Kali**
+```bash
+sudo apt update && sudo apt install git -y
+```
+
+**Fedora**
+```bash
+sudo dnf install git -y
+```
+
+**RHEL / CentOS**
+```bash
+sudo yum install git -y
+```
+
+**Arch Linux / Manjaro**
+```bash
+sudo pacman -S git
+```
+
+**openSUSE**
+```bash
+sudo zypper install git
+```
+
+**Alpine Linux**
+```bash
+sudo apk add git
+```
+
+### macOS
+
+```bash
+brew install git
+```
+
+Alternatively: `xcode-select --install`
+
+### Other Operating Systems
+
+https://git-scm.com/install
+
+### Verify Git Installation
+
+```bash
+git --version
+```
+
+### Clone Shadow Map GRC
+
+```bash
+git clone https://github.com/xITACHIxUCHIHAx/shadow-map-grc.git
+```
+
 ## Installation
 
 ### 1. Download the project
