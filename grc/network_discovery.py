@@ -1,13 +1,18 @@
 """GRC storage and Flask routes for the authorized LAN Network Monitor."""
 
 import json
+import os
 import sqlite3
 from datetime import datetime, timezone
+
+import requests
 
 from flask import (
     Blueprint,
     abort,
     flash,
+    g,
+    has_request_context,
     redirect,
     render_template,
     request,
@@ -27,6 +32,123 @@ network_discovery_bp = Blueprint(
     __name__,
     url_prefix="/network-discovery",
 )
+
+
+def _host_agent_config():
+    """Return the configured host-agent URL and authentication token."""
+    url = os.environ.get("SHADOW_MAP_HOST_AGENT_URL", "").strip().rstrip("/")
+    token = os.environ.get("SHADOW_MAP_HOST_AGENT_TOKEN", "").strip()
+
+    if bool(url) != bool(token):
+        raise NetworkDiscoveryError(
+            "Host discovery agent configuration is incomplete."
+        )
+
+    return url, token
+
+
+def _host_agent_request(method, endpoint, **kwargs):
+    """Make an authenticated request to the trusted host-side agent."""
+    url, token = _host_agent_config()
+
+    if not url:
+        return None
+
+    try:
+        response = requests.request(
+            method,
+            f"{url}{endpoint}",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=kwargs.pop("timeout", (3, 900)),
+            **kwargs,
+        )
+    except requests.RequestException as exc:
+        raise NetworkDiscoveryError(
+            f"Could not contact the host discovery agent: {exc}"
+        ) from exc
+
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise NetworkDiscoveryError(
+            "The host discovery agent returned an invalid response."
+        ) from exc
+
+    if not isinstance(payload, dict):
+        raise NetworkDiscoveryError(
+            "The host discovery agent returned an invalid response."
+        )
+
+    if not response.ok:
+        raise NetworkDiscoveryError(
+            str(payload.get("error") or
+                f"Host discovery agent returned HTTP {response.status_code}.")
+        )
+
+    return payload
+
+
+def get_host_network_interfaces():
+    """Return host interfaces, reusing the result within the current request."""
+    cache_key = "_shadow_map_host_network_interfaces"
+
+    if has_request_context() and hasattr(g, cache_key):
+        return getattr(g, cache_key)
+
+    payload = _host_agent_request("GET", "/interfaces", timeout=(3, 10))
+
+    if payload is None:
+        interfaces = get_network_interfaces()
+    else:
+        interfaces = payload.get("interfaces")
+        if not isinstance(interfaces, list):
+            raise NetworkDiscoveryError(
+                "The host agent did not return a valid interface list."
+            )
+
+    if has_request_context():
+        setattr(g, cache_key, interfaces)
+
+    return interfaces
+
+
+def _get_discovery_interfaces():
+    """Use host interfaces in Docker, otherwise use local interfaces."""
+    return get_host_network_interfaces()
+
+
+def _run_discovery(subnet, interface):
+    """Run discovery on the host when configured, otherwise locally."""
+    payload = _host_agent_request(
+        "POST",
+        "/scan",
+        json={
+            "interface": interface,
+            "subnet": subnet,
+            "authorized": True,
+        },
+        timeout=(3, 900),
+    )
+
+    if payload is None:
+        return discover_hosts(subnet, interface, authorized=True)
+
+    if not isinstance(payload.get("devices"), list):
+        raise NetworkDiscoveryError(
+            "The host agent returned invalid scan results."
+        )
+
+    if not isinstance(payload.get("devices_found"), int):
+        raise NetworkDiscoveryError(
+            "The host agent returned an invalid device count."
+        )
+
+    if not isinstance(payload.get("subnet"), str):
+        raise NetworkDiscoveryError(
+            "The host agent returned an invalid subnet."
+        )
+
+    return payload
 
 
 def now_utc():
@@ -86,6 +208,8 @@ def initialize_network_discovery(database_path=None):
                 ip_address TEXT NOT NULL,
                 mac_address TEXT,
                 vendor TEXT,
+                mac_source TEXT NOT NULL DEFAULT 'unavailable',
+                mac_neighbour_state TEXT,
                 hostnames_json TEXT NOT NULL DEFAULT '[]',
                 status TEXT NOT NULL DEFAULT 'not_recently_seen',
                 device_type TEXT NOT NULL DEFAULT 'unknown',
@@ -113,6 +237,18 @@ def initialize_network_discovery(database_path=None):
             db.execute("""
                 ALTER TABLE discovered_devices
                 ADD COLUMN open_ports_json TEXT NOT NULL DEFAULT '[]'
+            """)
+
+        if "mac_source" not in columns:
+            db.execute("""
+                ALTER TABLE discovered_devices
+                ADD COLUMN mac_source TEXT NOT NULL DEFAULT 'unavailable'
+            """)
+
+        if "mac_neighbour_state" not in columns:
+            db.execute("""
+                ALTER TABLE discovered_devices
+                ADD COLUMN mac_neighbour_state TEXT
             """)
 
         # Convert the previous scanner status into the new UI terminology.
@@ -155,6 +291,8 @@ def initialize_network_discovery(database_path=None):
                     "ip_address",
                     "mac_address",
                     "vendor",
+                    "mac_source",
+                    "mac_neighbour_state",
                     "hostnames",
                     "status",
                     "device_type",
@@ -254,23 +392,20 @@ def save_discovery_run(interface_name, subnet, devices, database_path=None):
             db.execute("""
                 INSERT INTO discovered_devices (
                     interface_name, subnet, ip_address,
-                    mac_address, vendor, hostnames_json,
-                    status, device_type, classification_confidence,
+                    mac_address, vendor, mac_source, mac_neighbour_state,
+                    hostnames_json, status, device_type,
+                    classification_confidence,
                     classification_evidence_json, open_ports_json,
                     first_seen, last_seen, last_discovery_run_id
                 )
-                VALUES (?, ?, ?, ?, ?, ?, 'online', ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'online', ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(interface_name, ip_address)
                 DO UPDATE SET
                     subnet = excluded.subnet,
-                    mac_address = COALESCE(
-                        excluded.mac_address,
-                        discovered_devices.mac_address
-                    ),
-                    vendor = COALESCE(
-                        excluded.vendor,
-                        discovered_devices.vendor
-                    ),
+                    mac_address = excluded.mac_address,
+                    vendor = excluded.vendor,
+                    mac_source = excluded.mac_source,
+                    mac_neighbour_state = excluded.mac_neighbour_state,
                     hostnames_json = excluded.hostnames_json,
                     status = 'online',
                     device_type = excluded.device_type,
@@ -288,6 +423,8 @@ def save_discovery_run(interface_name, subnet, devices, database_path=None):
                 device["ip_address"],
                 device.get("mac_address"),
                 device.get("vendor"),
+                device.get("mac_source", "unavailable"),
+                device.get("mac_neighbour_state"),
                 hostnames_json,
                 device.get("device_type", "unknown"),
                 device.get("classification_confidence", "low"),
@@ -450,7 +587,7 @@ def index():
     selected_subnet = request.form.get("subnet", "").strip()
 
     try:
-        interfaces = get_network_interfaces()
+        interfaces = _get_discovery_interfaces()
 
         # Select the first active interface on the initial page load.
         if request.method == "GET" and not selected_interface and interfaces:
@@ -484,10 +621,9 @@ def index():
             flash("Select a network interface and enter a subnet.", "error")
         else:
             try:
-                result = discover_hosts(
+                result = _run_discovery(
                     selected_subnet,
                     selected_interface,
-                    authorized=True,
                 )
 
                 save_discovery_run(

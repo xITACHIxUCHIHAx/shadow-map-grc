@@ -32,6 +32,8 @@ from grc.scan_registry import (
 from grc.network_discovery import (
     network_discovery_bp,
     initialize_network_discovery,
+    get_host_network_interfaces,
+    NetworkDiscoveryError,
 )
 from grc.vulnerability_correlation import correlate_asset_observations
 from grc.asset_observations import _asset_identity
@@ -211,6 +213,53 @@ def get_neighbor_mac(address):
     return "Unavailable"
 
 
+def get_server_interface_details():
+    """Resolve the application host interface, preferring its default route."""
+    try:
+        interfaces = get_host_network_interfaces()
+    except NetworkDiscoveryError:
+        interfaces = []
+
+    if isinstance(interfaces, list):
+        candidates = sorted(
+            (
+                item for item in interfaces
+                if isinstance(item, dict)
+            ),
+            key=lambda item: not bool(item.get("gateway")),
+        )
+
+        for interface in candidates:
+            address = str(interface.get("address") or "").strip()
+
+            try:
+                parsed_address = ipaddress.ip_address(address)
+            except ValueError:
+                continue
+
+            if (
+                parsed_address.version != 4
+                or parsed_address.is_loopback
+                or parsed_address.is_link_local
+                or parsed_address.is_unspecified
+            ):
+                continue
+
+            mac = str(interface.get("mac_address") or "").strip().lower()
+            mac = mac.replace("-", ":")
+
+            if not re.fullmatch(r"(?:[0-9a-f]{2}:){5}[0-9a-f]{2}", mac):
+                mac = "Unavailable"
+            elif mac == "00:00:00:00:00:00":
+                mac = "Unavailable"
+
+            return str(parsed_address), mac
+
+    # Preserve existing local detection if the host agent is unavailable.
+    server_ip = get_server_lan_ip()
+    return server_ip, get_interface_mac_for_ip(server_ip)
+
+
 def get_connection_details():
     """Return request connection details without trusting arbitrary forwarded headers."""
     peer_value = request.remote_addr or ""
@@ -264,7 +313,7 @@ def get_connection_details():
             if candidate in ("http", "https"):
                 scheme = candidate.upper()
 
-    server_lan_ip = get_server_lan_ip()
+    server_lan_ip, server_mac_address = get_server_interface_details()
 
     if client_ip == "Unknown":
         client_mac = "Unavailable"
@@ -283,7 +332,7 @@ def get_connection_details():
         "client_ip": client_ip,
         "client_mac_address": client_mac,
         "server_lan_ip": server_lan_ip,
-        "server_mac_address": get_interface_mac_for_ip(server_lan_ip),
+        "server_mac_address": server_mac_address,
         "proxy_ip": proxy_ip,
         "proxy_detected": peer_is_trusted,
         "connection_scheme": scheme,

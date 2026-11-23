@@ -1,64 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
-# Resolve symlinks so the command works when installed globally.
 SOURCE="${BASH_SOURCE[0]}"
 while [ -h "$SOURCE" ]; do
     DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
     LINK="$(readlink "$SOURCE")"
-    if [[ "$LINK" = /* ]]; then
-        SOURCE="$LINK"
-    else
-        SOURCE="$DIR/$LINK"
-    fi
+    if [[ "$LINK" = /* ]]; then SOURCE="$LINK"; else SOURCE="$DIR/$LINK"; fi
 done
-
 SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-
-# Support direct Docker access or sudo-based access.
-if docker info >/dev/null 2>&1; then
-    DOCKER=(docker)
-    SUDO=()
-elif sudo docker info >/dev/null 2>&1; then
-    DOCKER=(sudo docker)
-    SUDO=(sudo)
+if [[ -x "$PROJECT_DIR/venv/bin/python" ]]; then
+    PYTHON="$PROJECT_DIR/venv/bin/python"
+elif command -v python3 >/dev/null 2>&1; then
+    PYTHON="$(command -v python3)"
 else
-    echo "Docker is unavailable or permission was denied."
+    echo "Python 3 is required." >&2
     exit 1
 fi
-
-# Support Compose plugin and legacy standalone Compose.
-if "${DOCKER[@]}" compose version >/dev/null 2>&1; then
-    COMPOSE=("${DOCKER[@]}" compose)
-elif command -v docker-compose >/dev/null 2>&1; then
-    COMPOSE=("${SUDO[@]}" docker-compose)
-else
-    echo "Docker Compose is not installed."
-    exit 1
-fi
-
-run_compose() {
-    "${COMPOSE[@]}" \
-        --project-directory "$PROJECT_DIR" \
-        -f "$PROJECT_DIR/docker-compose.yml" "$@"
-}
-
-case "${1:-}" in
-    start)
-        run_compose pull grc
-        run_compose up -d
-        ;;
-    stop) run_compose down ;;
-    restart)
-        run_compose pull grc
-        run_compose up -d
-        ;;
-    status)  run_compose ps ;;
-    logs)    run_compose logs -f ;;
-    *)
-        echo "Shadow Map GRC"
-        echo "Usage: grc {start|stop|restart|status|logs}"
-        exit 1
-        ;;
-esac
+exec "$PYTHON" "$SCRIPT_DIR/grc_launcher.py" "${1:-}"

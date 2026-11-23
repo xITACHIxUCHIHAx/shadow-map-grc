@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -euo pipefail
+SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$SOURCE" ]; do
+    DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+    LINK="$(readlink "$SOURCE")"
+    if [[ "$LINK" = /* ]]; then SOURCE="$LINK"; else SOURCE="$DIR/$LINK"; fi
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+if [[ -x "$PROJECT_DIR/venv/bin/python" ]]; then
+    PYTHON="$PROJECT_DIR/venv/bin/python"
+elif command -v python3 >/dev/null 2>&1; then
+    PYTHON="$(command -v python3)"
+else
+    echo "Python 3 is required." >&2
+    exit 1
+fi
+exec "$PYTHON" "$SCRIPT_DIR/grc_launcher.py" "${1:-}"

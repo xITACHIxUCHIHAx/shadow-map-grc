@@ -27,12 +27,15 @@ class FakeSocket:
     def __init__(self, response):
         self.response = response
         self.sent = False
+        self.bind_calls = []
+        self.setsockopt_calls = []
+        self.closed = False
 
     def setsockopt(self, *args):
-        pass
+        self.setsockopt_calls.append(args)
 
     def bind(self, *args):
-        pass
+        self.bind_calls.append(args)
 
     def settimeout(self, *args):
         pass
@@ -47,7 +50,7 @@ class FakeSocket:
         raise OSError("end mocked response stream")
 
     def close(self):
-        pass
+        self.closed = True
 
 
 class TestMulticastParsers(unittest.TestCase):
@@ -185,5 +188,95 @@ class TestMulticastCollection(unittest.TestCase):
                 for hint in devices[0]["multicast_hints"]
             )
         )
-        # mDNS must bind and join its multicast group.
-        self.assertTrue(any(call.args[0] == 5353 for call in mdns.__dict__.get("bind_calls", [])) is False)
+        # mDNS must bind to its response port and join its multicast group.
+        self.assertIn((("", 5353),), mdns.bind_calls)
+        self.assertTrue(
+            any(
+                len(args) == 3
+                and args[1] == discovery.socket.IP_ADD_MEMBERSHIP
+                for args in mdns.setsockopt_calls
+            )
+        )
+
+    @patch("scanner.network_discovery.socket.socket")
+    def test_mdns_failure_does_not_prevent_ssdp_discovery(self, mock_socket):
+        ssdp = FakeSocket(
+            b"HTTP/1.1 200 OK\r\n"
+            b"ST: urn:schemas-upnp-org:device:MediaRenderer:1\r\n\r\n"
+        )
+        mock_socket.side_effect = [
+            OSError("mDNS unavailable"),
+            ssdp,
+        ]
+
+        devices = [{
+            "ip_address": "192.168.1.20",
+            "hostnames": [],
+            "vendor": None,
+            "open_ports": [],
+        }]
+
+        counts = discovery.discover_multicast_evidence(
+            devices, "192.168.1.10"
+        )
+
+        self.assertEqual(counts, {"mdns": 0, "ssdp": 1})
+        self.assertTrue(any(
+            hint["source"] == "ssdp"
+            for hint in devices[0]["multicast_hints"]
+        ))
+
+    @patch("scanner.network_discovery.socket.socket")
+    def test_ssdp_failure_does_not_prevent_mdns_discovery(self, mock_socket):
+        mdns = FakeSocket(mdns_ptr_response("_googlecast._tcp.local"))
+        mock_socket.side_effect = [
+            mdns,
+            OSError("SSDP unavailable"),
+        ]
+
+        devices = [{
+            "ip_address": "192.168.1.20",
+            "hostnames": [],
+            "vendor": None,
+            "open_ports": [],
+        }]
+
+        counts = discovery.discover_multicast_evidence(
+            devices, "192.168.1.10"
+        )
+
+        self.assertEqual(counts, {"mdns": 1, "ssdp": 0})
+        self.assertTrue(any(
+            hint["source"] == "mdns"
+            for hint in devices[0]["multicast_hints"]
+        ))
+
+
+    @patch("scanner.network_discovery.socket.socket")
+    def test_sockets_are_closed_after_successful_collection(self, mock_socket):
+        mdns = FakeSocket(b"")
+        ssdp = FakeSocket(b"")
+        mock_socket.side_effect = [mdns, ssdp]
+
+        discovery.discover_multicast_evidence(
+            [], "192.168.1.10"
+        )
+
+        self.assertTrue(mdns.closed)
+        self.assertTrue(ssdp.closed)
+
+    @patch("scanner.network_discovery.socket.socket")
+    def test_socket_is_closed_when_setup_fails(self, mock_socket):
+        failed = FakeSocket(b"")
+        failed.setsockopt = lambda *args: (_ for _ in ()).throw(
+            OSError("multicast interface unavailable")
+        )
+        ssdp = FakeSocket(b"")
+        mock_socket.side_effect = [failed, ssdp]
+
+        discovery.discover_multicast_evidence(
+            [], "192.168.1.10"
+        )
+
+        self.assertTrue(failed.closed)
+        self.assertTrue(ssdp.closed)

@@ -88,6 +88,8 @@ def test_network_monitor_initialization_is_repeatable(tmp_path):
     assert "network_discovery_run_devices" in tables
     assert "network_observations" not in tables
     assert "open_ports_json" in columns
+    assert "mac_source" in columns
+    assert "mac_neighbour_state" in columns
 
 
 def test_existing_observation_table_and_records_are_preserved(tmp_path):
@@ -279,8 +281,10 @@ def test_rediscovery_updates_device_without_losing_mac_or_vendor(
     assert len(devices) == 1
 
     device = devices[0]
-    assert device["mac_address"] == "AA:BB:CC:DD:EE:01"
-    assert device["vendor"] == "Example Vendor"
+    assert device["mac_address"] is None
+    assert device["vendor"] is None
+    assert device["mac_source"] == "unavailable"
+    assert device["mac_neighbour_state"] is None
     assert device["hostnames"] == ["gateway.local"]
     assert device["open_ports"] == second_observation[0]["open_ports"]
     assert device["status"] == "online"
@@ -298,6 +302,11 @@ def test_rediscovery_updates_device_without_losing_mac_or_vendor(
 
     assert run_count == 2
     assert device_count == 1
+
+    first_run = network_routes.get_discovery_run_details(
+        1, database_path=database
+    )
+    assert first_run["devices"][0]["mac_address"] == "AA:BB:CC:DD:EE:01"
 
 
 def test_successful_scan_marks_missing_devices_not_recently_seen(tmp_path):
@@ -784,3 +793,156 @@ def test_missing_run_details_page_returns_404(
     response = client.get("/network-discovery/runs/99999")
 
     assert response.status_code == 404
+
+
+def test_host_agent_interfaces_are_used_by_network_monitor(
+    monkeypatch, tmp_path
+):
+    client, _ = setup_network_discovery_app(monkeypatch, tmp_path)
+
+    monkeypatch.setenv(
+        "SHADOW_MAP_HOST_AGENT_URL", "http://172.18.0.1:5001"
+    )
+    monkeypatch.setenv("SHADOW_MAP_HOST_AGENT_TOKEN", "test-agent-token")
+
+    calls = []
+
+    class FakeResponse:
+        ok = True
+        status_code = 200
+
+        def json(self):
+            return {"interfaces": SAMPLE_INTERFACES}
+
+    def fake_request(method, url, **kwargs):
+        calls.append((method, url, kwargs))
+        return FakeResponse()
+
+    monkeypatch.setattr(network_routes.requests, "request", fake_request)
+
+    response = client.get("/network-discovery/")
+
+    assert response.status_code == 200
+    assert b"eth0" in response.data
+    assert len(calls) == 1
+    assert calls[0][0] == "GET"
+    assert calls[0][1].endswith("/interfaces")
+    assert calls[0][2]["headers"]["Authorization"] == (
+        "Bearer test-agent-token"
+    )
+
+
+def test_host_agent_scan_is_forwarded_and_persisted(
+    monkeypatch, tmp_path
+):
+    client, database = setup_network_discovery_app(monkeypatch, tmp_path)
+
+    monkeypatch.setenv(
+        "SHADOW_MAP_HOST_AGENT_URL", "http://172.18.0.1:5001"
+    )
+    monkeypatch.setenv("SHADOW_MAP_HOST_AGENT_TOKEN", "test-agent-token")
+
+    calls = []
+
+    class FakeResponse:
+        ok = True
+        status_code = 200
+
+        def __init__(self, payload):
+            self.payload = payload
+
+        def json(self):
+            return self.payload
+
+    def fake_request(method, url, **kwargs):
+        calls.append((method, url, kwargs))
+
+        if url.endswith("/interfaces"):
+            return FakeResponse({"interfaces": SAMPLE_INTERFACES})
+
+        return FakeResponse({
+            "subnet": "192.168.1.0/24",
+            "interface": "eth0",
+            "devices": SAMPLE_DEVICES,
+            "devices_found": len(SAMPLE_DEVICES),
+        })
+
+    monkeypatch.setattr(network_routes.requests, "request", fake_request)
+
+    response = client.post(
+        "/network-discovery/",
+        data={
+            "authorized": "yes",
+            "interface": "eth0",
+            "subnet": "192.168.1.0/24",
+        },
+    )
+
+    assert response.status_code == 302
+    assert [call[0] for call in calls] == ["GET", "POST"]
+    assert calls[1][1].endswith("/scan")
+    assert calls[1][2]["headers"]["Authorization"] == (
+        "Bearer test-agent-token"
+    )
+    assert calls[1][2]["json"] == {
+        "interface": "eth0",
+        "subnet": "192.168.1.0/24",
+        "authorized": True,
+    }
+
+    devices = network_routes.get_discovered_devices(database)
+    assert len(devices) == 1
+    assert devices[0]["ip_address"] == "192.168.1.1"
+
+    runs = network_routes.get_recent_discovery_runs(
+        database_path=database
+    )
+    assert len(runs) == 1
+    assert runs[0]["status"] == "completed"
+
+
+def test_host_agent_connection_failure_is_recorded_safely(
+    monkeypatch, tmp_path
+):
+    client, database = setup_network_discovery_app(monkeypatch, tmp_path)
+
+    monkeypatch.setenv(
+        "SHADOW_MAP_HOST_AGENT_URL", "http://172.18.0.1:5001"
+    )
+    monkeypatch.setenv("SHADOW_MAP_HOST_AGENT_TOKEN", "test-agent-token")
+
+    class FakeResponse:
+        ok = True
+        status_code = 200
+
+        def json(self):
+            return {"interfaces": SAMPLE_INTERFACES}
+
+    def fake_request(method, url, **kwargs):
+        if url.endswith("/interfaces"):
+            return FakeResponse()
+        raise network_routes.requests.ConnectionError(
+            "Mocked host-agent connection failure."
+        )
+
+    monkeypatch.setattr(network_routes.requests, "request", fake_request)
+
+    response = client.post(
+        "/network-discovery/",
+        data={
+            "authorized": "yes",
+            "interface": "eth0",
+            "subnet": "192.168.1.0/24",
+        },
+    )
+
+    assert response.status_code == 200
+
+    runs = network_routes.get_recent_discovery_runs(
+        database_path=database
+    )
+    assert len(runs) == 1
+    assert runs[0]["status"] == "failed"
+    assert "Could not contact the host discovery agent" in runs[0]["error"]
+
+    assert network_routes.get_discovered_devices(database) == []

@@ -144,7 +144,16 @@
             {% for device in devices %}
               <tr>
                 <td><strong>{{ device.ip_address }}</strong></td>
-                <td>{{ device.mac_address or "Not available" }}</td>
+                <td>
+                  {{ device.mac_address or "Not available" }}
+                  <br>
+                  <small class="muted">
+                    Source: {{ device.mac_source|replace("_", " ")|title }}
+                    {% if device.mac_neighbour_state %}
+                      · Neighbour: {{ device.mac_neighbour_state }}
+                    {% endif %}
+                  </small>
+                </td>
                 <td>
                   {% if device.hostnames %}
                     {{ device.hostnames|join(", ") }}

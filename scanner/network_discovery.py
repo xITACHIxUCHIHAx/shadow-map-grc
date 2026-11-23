@@ -199,13 +199,36 @@ def get_network_interfaces():
             except (ValueError, TypeError):
                 continue
 
+            mac_address = "Unavailable"
+            for link_address in addresses:
+                if link_address.family != psutil.AF_LINK:
+                    continue
+
+                candidate_mac = str(link_address.address).strip().lower().replace("-", ":")
+                if (
+                    re.fullmatch(r"(?:[0-9a-f]{2}:){5}[0-9a-f]{2}", candidate_mac)
+                    and candidate_mac != "00:00:00:00:00:00"
+                ):
+                    mac_address = candidate_mac
+                    break
+
             interfaces.append({
                 "name": name,
                 "address": local_address,
+                "mac_address": mac_address,
                 "prefix_length": network_interface.network.prefixlen,
                 "network": str(network_interface.network),
                 "gateway": gateways.get(name),
             })
+
+    # Prefer interfaces with a default gateway. In host-network mode this
+    # puts the active physical LAN interface ahead of Docker bridges.
+    interfaces.sort(
+        key=lambda item: (
+            not bool(item.get("gateway")),
+            item["name"],
+        )
+    )
 
     return interfaces
 
@@ -604,6 +627,23 @@ def _ssdp_role_for_headers(headers):
 
     return None
 
+def _normalize_mac_address(value):
+    """Return a normalized unicast MAC address, or None if invalid."""
+    candidate = str(value or "").strip().upper()
+    candidate = candidate.replace("-", ":")
+
+    if not re.fullmatch(r"(?:[0-9A-F]{2}:){5}[0-9A-F]{2}", candidate):
+        return None
+
+    octets = bytes.fromhex(candidate.replace(":", ""))
+
+    # Reject the unspecified address and multicast/group addresses.
+    if octets == bytes(6) or octets[0] & 1:
+        return None
+
+    return candidate
+
+
 def parse_discovery_xml(xml_text):
     """Parse Nmap host-discovery XML and return responding IPv4 hosts."""
     try:
@@ -634,13 +674,12 @@ def parse_discovery_xml(xml_text):
                 ip_address = address.get("addr")
 
             elif address_type == "mac":
-                candidate = address.get("addr", "").strip()
+                candidate = _normalize_mac_address(
+                    address.get("addr")
+                )
 
-                if re.fullmatch(
-                    r"(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}",
-                    candidate,
-                ):
-                    mac_address = candidate.upper()
+                if candidate:
+                    mac_address = candidate
                     vendor = address.get("vendor") or None
 
         try:
@@ -657,6 +696,8 @@ def parse_discovery_xml(xml_text):
         device = {
             "ip_address": ip_address,
             "mac_address": mac_address,
+            "mac_source": "nmap" if mac_address else "unavailable",
+            "mac_neighbour_state": None,
             "vendor": vendor,
             "hostnames": hostnames,
             "status": "online",
@@ -932,6 +973,137 @@ def discover_multicast_evidence(devices, interface_ip):
     return counts
 
 
+def _get_neighbour_mac(ip_address, interface_name):
+    """Return a valid neighbour MAC and state on supported operating systems."""
+    system = platform.system()
+    target_ip = str(ipaddress.IPv4Address(ip_address))
+
+    if system == "Linux":
+        ip_binary = shutil.which("ip")
+        if not ip_binary:
+            return None
+
+        command = [
+            ip_binary, "neigh", "show", "to",
+            target_ip, "dev", interface_name,
+        ]
+
+    elif system == "Windows":
+        powershell = shutil.which("powershell") or shutil.which("pwsh")
+
+        if powershell:
+            # PowerShell single-quoted strings escape an embedded quote by doubling it.
+            safe_interface_name = interface_name.replace("'", "''")
+            script = (
+                "Get-NetNeighbor -IPAddress "
+                f"'{target_ip}' -InterfaceAlias "
+                f"'{safe_interface_name}' -ErrorAction SilentlyContinue | "
+                "Select-Object -First 1 LinkLayerAddress,State | "
+                "ConvertTo-Json -Compress"
+            )
+            try:
+                result = subprocess.run(
+                    [
+                        powershell, "-NoProfile", "-NonInteractive",
+                        "-Command", script,
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                    check=False,
+                )
+                if result.returncode == 0 and result.stdout.strip():
+                    data = json.loads(result.stdout)
+                    if isinstance(data, dict):
+                        mac = _normalize_mac_address(
+                            str(data.get("LinkLayerAddress", "")).upper()
+                        )
+                        state = str(data.get("State", "UNKNOWN")).upper()
+                        if mac and state not in {"INCOMPLETE", "UNREACHABLE", "FAILED"}:
+                            return mac, state
+            except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError):
+                pass
+
+        arp_binary = shutil.which("arp")
+        if not arp_binary:
+            return None
+
+        command = [arp_binary, "-a", target_ip]
+
+    elif system == "Darwin":
+        arp_binary = shutil.which("arp") or "/usr/sbin/arp"
+        command = [arp_binary, "-n", target_ip]
+
+    else:
+        return None
+
+    try:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+
+    if result.returncode != 0:
+        return None
+
+    for line in result.stdout.splitlines():
+        if target_ip not in line:
+            continue
+
+        if system == "Linux":
+            fields = line.split()
+            if not fields or fields[0] != target_ip:
+                continue
+            if any(state in fields for state in ("FAILED", "INCOMPLETE")):
+                continue
+            try:
+                marker = fields.index("lladdr")
+                candidate = fields[marker + 1].upper()
+            except (ValueError, IndexError):
+                continue
+
+            normalized = _normalize_mac_address(candidate)
+            if normalized:
+                known_states = {
+                    "REACHABLE", "STALE", "DELAY", "PROBE",
+                    "PERMANENT", "NOARP",
+                }
+                state = next(
+                    (field.upper() for field in fields if field.upper() in known_states),
+                    "UNKNOWN",
+                )
+                return normalized, state
+
+        else:
+            match = re.search(
+                r"(?i)(?:[0-9a-f]{2}[:-]){5}[0-9a-f]{2}",
+                line,
+            )
+            if not match:
+                continue
+
+            normalized = _normalize_mac_address(match.group(0).upper())
+            if normalized:
+                return normalized, "UNKNOWN"
+
+    return None
+
+
+
+def _nmap_interface_arguments(interface_name):
+    """Return Nmap interface arguments supported by the current platform."""
+    if platform.system() == "Linux":
+        return ["-e", interface_name]
+
+    # Windows and macOS use their routing tables to select the interface.
+    # The requested subnet is independently validated against that interface.
+    return []
+
 def discover_hosts(
     subnet_text,
     interface_name,
@@ -968,7 +1140,7 @@ def discover_hosts(
 
     discovery_command = [
         nmap_binary,
-        "-e", interface_name,
+        *_nmap_interface_arguments(interface_name),
         "-sn",
         "-oX", "-",
         str(network),
@@ -980,6 +1152,37 @@ def discover_hosts(
         "Host discovery",
     )
     devices = parse_discovery_xml(discovery_xml)
+
+    # Neighbour entries are meaningful as endpoint MACs only for addresses
+    # on the selected interface's directly connected subnet. Never use a
+    # default-gateway MAC for a routed destination.
+    # The validated scan network is directly contained within the
+    # selected interface's assigned network.
+    assigned_network = network
+
+    for device in devices:
+        if device.get("mac_address"):
+            continue
+
+        target_ip = ipaddress.IPv4Address(device["ip_address"])
+        if target_ip not in assigned_network:
+            device["mac_source"] = "unavailable"
+            continue
+
+        neighbour_mac = _get_neighbour_mac(
+            device["ip_address"],
+            interface_name,
+        )
+        if neighbour_mac:
+            device["mac_address"], device["mac_neighbour_state"] = neighbour_mac
+            device["mac_source"] = {
+                "Linux": "linux_neighbour_table",
+                "Windows": "windows_neighbour_table",
+                "Darwin": "macos_neighbour_table",
+            }.get(platform.system(), "system_neighbour_table")
+        else:
+            device["mac_source"] = "unavailable"
+            device["mac_neighbour_state"] = None
 
     service_command = None
 
@@ -997,7 +1200,7 @@ def discover_hosts(
 
         service_command = [
             nmap_binary,
-            "-e", interface_name,
+            *_nmap_interface_arguments(interface_name),
             "-sT",
             "-Pn",
             "-n",

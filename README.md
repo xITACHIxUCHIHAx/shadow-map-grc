@@ -53,7 +53,10 @@ The prebuilt image is available on Docker Hub:
 docker pull xitachixuchihax/shadow-map-grc:latest
 ```
 
-The startup scripts automatically pull the latest published image before starting or restarting the application.
+The `start` and `restart` commands pull the latest published image. To build
+and publish changes from your local source tree, authenticate to Docker Hub and
+run the `publish` command; it builds the image, pushes the configured tag, and
+deploys that same locally built image.
 
 ## Installing Git
 
@@ -257,9 +260,30 @@ bash scripts/grc start
 
 **macOS:**
 
+The macOS launcher is a Bash script. Run it without changing file permissions:
+
 ```bash
-bash scripts/grc start
+bash scripts/grc-macos start
 ```
+
+If you prefer to execute it directly, grant execute permission once:
+
+```bash
+chmod 755 scripts/grc-macos
+./scripts/grc-macos start
+```
+
+If macOS reports that the file is from an unidentified developer, do not disable
+Gatekeeper globally. First verify that the file came from the official project
+source. If the trusted file has a quarantine attribute and you deliberately
+choose to clear it, remove that attribute only from this launcher:
+
+```bash
+xattr -d com.apple.quarantine scripts/grc-macos
+```
+
+This is not a general antivirus exclusion and should not be used for files whose
+origin you have not verified.
 
 **Windows PowerShell:**
 
@@ -299,13 +323,135 @@ Expected response:
 
 Run these commands from the project root.
 
-| Action | Linux/macOS | Windows PowerShell |
-|---|---|---|
-| Start | `bash scripts/grc start` | `.\scripts\grc.ps1 start` |
-| Stop | `bash scripts/grc stop` | `.\scripts\grc.ps1 stop` |
-| Restart | `bash scripts/grc restart` | `.\scripts\grc.ps1 restart` |
-| Status | `bash scripts/grc status` | `.\scripts\grc.ps1 status` |
-| Logs | `bash scripts/grc logs` | `.\scripts\grc.ps1 logs` |
+| Action | Linux | macOS | Windows PowerShell |
+|---|---|---|---|
+| Start | `bash scripts/grc start` | `bash scripts/grc-macos start` | `.\scripts\grc.ps1 start` |
+| Stop | `bash scripts/grc stop` | `bash scripts/grc-macos stop` | `.\scripts\grc.ps1 stop` |
+| Restart | `bash scripts/grc restart` | `bash scripts/grc-macos restart` | `.\scripts\grc.ps1 restart` |
+| Status | `bash scripts/grc status` | `bash scripts/grc-macos status` | `.\scripts\grc.ps1 status` |
+| Logs | `bash scripts/grc logs` | `bash scripts/grc-macos logs` | `.\scripts\grc.ps1 logs` |
+| Build, publish and deploy | `bash scripts/grc publish` | `bash scripts/grc-macos publish` | `.\scripts\grc.ps1 publish` |
+
+## Publishing an Updated Docker Image
+
+The Network Monitor source includes authenticated host-agent integration. The
+host agent provides the host operating system's active IPv4 interfaces to the
+Network Configuration page and performs authorized discovery on that host
+interface. The running container must use an image built from this source for
+those application-side changes to appear in the browser.
+
+To publish and deploy your current local source in one operation:
+
+1. Sign in to Docker Hub using the same Docker account/context used by the
+   launcher. On Linux systems where the launcher uses `sudo docker`, log in
+   with `sudo docker login`.
+2. Run the platform launcher with the `publish` action.
+
+Linux:
+
+```bash
+bash scripts/grc publish
+```
+
+macOS:
+
+```bash
+bash scripts/grc-macos publish
+```
+
+Windows PowerShell:
+
+```powershell
+.\scripts\grc.ps1 publish
+```
+
+The command validates the Compose configuration, builds
+`xitachixuchihax/shadow-map-grc:latest` from the current project directory,
+starts the host discovery agent, deploys the locally built image, and checks
+`/health`. It pushes the image to Docker Hub only after the local deployment
+passes its health check. It does not modify GitHub or commit source files.
+Docker Hub credentials are managed by Docker; never put a registry password
+or access token in `.env`.
+
+## Host-side LAN Discovery Agent
+
+The Network Monitor uses a small authenticated Python agent on the host so that
+LAN interface discovery and neighbour-table lookups run in the host operating
+system rather than inside Docker.
+
+- The launcher creates a random `SHADOW_MAP_HOST_AGENT_TOKEN` on first start
+  and stores it in `.env`; the token is not printed.
+- On Linux, the launcher creates the Compose network, discovers its gateway,
+  and binds the agent to that gateway address.
+- On Windows and macOS with Docker Desktop, the agent listens on the host
+  interfaces and the container connects through `host.docker.internal`.
+- The dashboard remains bound to `127.0.0.1:5000`.
+- The launcher records only processes it starts. `stop` never terminates an
+  independently started host agent.
+- Keep host firewall protection enabled. On Windows/macOS, restrict inbound
+  TCP port `5001` to the Docker Desktop/WSL source network; do not create a
+  public internet port-forward for this service.
+- **Security limitation:** the current host-agent connection uses HTTP rather
+  than TLS, and the Windows/macOS launcher binds to host interfaces so Docker
+  Desktop can reach it. The bearer token is therefore not protected against
+  capture by an attacker who can observe that traffic. This launcher does not
+  install firewall rules automatically. Do not use this host-agent mode on an
+  untrusted network unless your host firewall is configured to permit only the
+  Docker Desktop/WSL source and block other inbound access. A TLS-protected
+  transport and native Windows/macOS firewall verification are release blockers
+  for wider distribution.
+- If the host Python environment does not already have the agent dependencies,
+  install the small host-only set with
+  `python -m pip install -r requirements-host-agent.txt`.
+
+The host agent uses bearer-token authentication. Rotate the token by stopping
+Shadow Map GRC, replacing `SHADOW_MAP_HOST_AGENT_TOKEN` in `.env` with a newly
+generated random value, and starting it again. Never commit or share `.env`.
+
+## Windows and macOS Security-Tool Exclusions
+
+**Normal installation should not require antivirus exclusions.** Keep Microsoft
+Defender, Gatekeeper, XProtect, macOS System Integrity Protection (SIP), and
+third-party endpoint protection enabled. Do not exclude the entire drive, home
+directory, Python installation, Docker installation, `data/`, reports, or scan
+targets.
+
+### Windows Defender (only for a confirmed false positive)
+
+First verify the project source and identify the exact file Defender blocked.
+Prefer submitting a suspected false positive to Microsoft or asking your
+administrator to review it. If an administrator explicitly approves a temporary
+exception, run PowerShell as Administrator and add only the specific blocked
+launcher file:
+
+```powershell
+$BlockedFile = (Resolve-Path ".\scripts\grc.ps1").Path
+Add-MpPreference -ExclusionPath $BlockedFile
+Get-MpPreference | Select-Object -ExpandProperty ExclusionPath
+```
+
+Remove the exception when it is no longer required:
+
+```powershell
+Remove-MpPreference -ExclusionPath $BlockedFile
+```
+
+Use the actual blocked file path if it is not `scripts\grc.ps1`. An exclusion
+reduces protection for that file; it does not establish that the file is safe.
+Do not add broad process, interpreter, folder, or drive exclusions.
+
+### macOS
+
+macOS does not provide a universal command for adding a folder exclusion to
+Gatekeeper or XProtect. Do not disable Gatekeeper, SIP, or XProtect to run this
+project. For a verified launcher blocked because of its quarantine metadata,
+follow the file-specific `xattr` guidance in the macOS startup section above.
+For third-party antivirus or endpoint products, use that vendor's documented
+per-file exception workflow only after administrator approval; the command and
+scope are product-specific.
+
+If your organization manages endpoint protection, follow its policy rather than
+adding local exclusions yourself.
 
 ## Background Process Management
 
@@ -514,11 +660,12 @@ Back up the `data/` directory before upgrades or maintenance. Stopping or rebuil
 | `grc/` | Governance, risk and compliance logic |
 | `scanner/` | Security assessment modules |
 | `reporting/` | Report generation |
-| `scripts/` | Docker management scripts |
+| `scripts/` | Cross-platform application and host-agent launchers |
 | `static/` | Static assets |
 | `templates/` | HTML templates |
 | `tests/` | Automated tests |
-| `requirements.txt` | Python dependencies |
+| `requirements.txt` | Application Python dependencies |
+| `requirements-host-agent.txt` | Minimal host-agent dependencies |
 
 ## Development Checks
 

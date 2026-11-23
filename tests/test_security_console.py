@@ -115,24 +115,36 @@ def test_neighbor_lookup_rejects_invalid_ip():
     assert app_module.get_neighbor_mac("not-an-ip") == "Unavailable"
 
 
-def test_connection_details_include_mac_fields(monkeypatch):
+def test_connection_details_use_host_agent_interface(monkeypatch):
     monkeypatch.setattr(
-        app_module, "get_server_lan_ip",
-        lambda: "192.168.29.88",
+        app_module,
+        "get_host_network_interfaces",
+        lambda: [
+            {
+                "name": "docker0",
+                "address": "172.18.0.2",
+                "mac_address": "ce:dc:2f:2e:c3:a5",
+                "gateway": None,
+            },
+            {
+                "name": "eth0",
+                "address": "192.168.29.88",
+                "mac_address": "00:0c:29:4b:b3:0b",
+                "gateway": "192.168.29.1",
+            },
+        ],
     )
     monkeypatch.setattr(
-        app_module, "get_interface_mac_for_ip",
-        lambda address: "02:11:22:33:44:55",
-    )
-    monkeypatch.setattr(
-        app_module, "get_neighbor_mac",
+        app_module,
+        "get_neighbor_mac",
         lambda address: "Unavailable",
     )
 
     with app_module.app.test_request_context("/"):
         details = app_module.get_connection_details()
 
-    assert details["server_mac_address"] == "02:11:22:33:44:55"
+    assert details["server_lan_ip"] == "192.168.29.88"
+    assert details["server_mac_address"] == "00:0c:29:4b:b3:0b"
     assert details["client_mac_address"] == "Unavailable"
 
 

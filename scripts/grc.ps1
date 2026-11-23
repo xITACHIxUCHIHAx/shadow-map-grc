@@ -1,36 +1,26 @@
 param(
     [Parameter(Position = 0)]
-    [ValidateSet("start", "stop", "restart", "status", "logs")]
+    [ValidateSet("start", "stop", "restart", "status", "logs", "publish")]
     [string]$Action
 )
 
 $ErrorActionPreference = "Stop"
 $ProjectDir = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$VenvPython = Join-Path $ProjectDir "venv\Scripts\python.exe"
 
-if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
-    throw "Docker is not installed or is not available in PATH."
+if (Test-Path $VenvPython) {
+    $Python = $VenvPython
+}
+else {
+    $PythonCommand = Get-Command python -ErrorAction SilentlyContinue
+    if (-not $PythonCommand) {
+        throw "Python 3 is required and was not found in PATH."
+    }
+    $Python = $PythonCommand.Source
 }
 
-docker info | Out-Null
+$Launcher = Join-Path $PSScriptRoot "grc_launcher.py"
+& $Python $Launcher $Action
 if ($LASTEXITCODE -ne 0) {
-    throw "Docker Desktop is not running. Start Docker Desktop first."
-}
-
-Push-Location $ProjectDir
-
-try {
-    switch ($Action) {
-        "start"   { docker compose pull grc; if ($LASTEXITCODE -ne 0) { throw "Docker image pull failed." }; docker compose up -d }
-        "stop"    { docker compose down }
-        "restart" { docker compose pull grc; if ($LASTEXITCODE -ne 0) { throw "Docker image pull failed." }; docker compose up -d }
-        "status"  { docker compose ps }
-        "logs"    { docker compose logs -f }
-    }
-
-    if ($LASTEXITCODE -ne 0) {
-        throw "Shadow Map GRC command failed."
-    }
-}
-finally {
-    Pop-Location
+    throw "Shadow Map GRC command failed with exit code $LASTEXITCODE."
 }
