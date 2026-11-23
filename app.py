@@ -905,7 +905,7 @@ def normalize_unified_target(raw_target, module):
     raise ValueError("Unsupported Unified Scan module.")
 
 
-def _run_unified_scan_background(run_id, targets, modules, profile, detect_os=False, custom_ports=None, web_assessment_profile="standard"):
+def _run_unified_scan_background(run_id, targets, modules, profile, detect_os=False, custom_ports=None):
     """Execute a Unified Scan outside the HTTP request."""
     batch_ids = {}
     overall_error = False
@@ -929,7 +929,7 @@ def _run_unified_scan_background(run_id, targets, modules, profile, detect_os=Fa
                         f"custom_tcp:{','.join(map(str, custom_ports))}"
                         if custom_ports else profile
                     ),
-                    "web_security": f"web_assessment:{web_assessment_profile}",
+                    "web_security": "wapiti_web_assessment",
                     "threat_intel": "shodan_internetdb",
                     "firewall": "native_firewall_detection",
                     "zap": "zap_active_scan",
@@ -1059,7 +1059,6 @@ def _run_unified_scan_background(run_id, targets, modules, profile, detect_os=Fa
                         elif module == "web_security":
                             result = scan_web_security(
                                 validated_target,
-                                profile=web_assessment_profile,
                                 run_guard=web_run_guard,
                                 progress_callback=lambda event: record_unified_progress(
                                     run_id, module, raw_target, event
@@ -1427,16 +1426,6 @@ def unified_scan():
         flash("Choose a valid Nmap scan profile.", "error")
         return redirect(request.referrer or url_for("dashboard"))
 
-    web_assessment_profile = (
-        request.form.get("web_assessment_profile") or "standard"
-    ).strip()
-    if (
-        "web_security" in modules
-        and web_assessment_profile not in {"standard", "comprehensive", "deep"}
-    ):
-        flash("Choose a valid Web Assessment profile.", "error")
-        return redirect(request.referrer or url_for("dashboard"))
-
     try:
         custom_ports = (
             parse_custom_ports(request.form.get("custom_ports", ""))
@@ -1477,7 +1466,7 @@ def unified_scan():
 
     _start_tracked_worker(
         _run_unified_scan_background,
-        args=(run_id, targets, modules, profile, detect_os, custom_ports, web_assessment_profile),
+        args=(run_id, targets, modules, profile, detect_os, custom_ports),
         name=f"unified-scan-{run_id}",
     )
 
@@ -3025,6 +3014,95 @@ def export_web_security_pdf(scan_id):
     response = Response(pdf_bytes, mimetype="application/pdf")
     response.headers["Content-Disposition"] = (
         f'attachment; filename="shadow-map-web-security-{scan_id}.pdf"'
+    )
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    return response
+
+
+
+@app.route("/web-security/results/<int:scan_id>/export.csv")
+def export_web_security_csv(scan_id):
+    with get_db() as db:
+        scan = db.execute(
+            "SELECT * FROM web_security_scans WHERE id = ?",
+            (scan_id,),
+        ).fetchone()
+
+    if scan is None:
+        abort(404)
+
+    try:
+        result = json.loads(scan["result_json"]) if scan["result_json"] else {}
+    except (TypeError, ValueError):
+        result = {}
+    if not isinstance(result, dict):
+        result = {}
+
+    classifications = result.get("classifications") or {}
+    vulnerabilities = result.get("vulnerabilities") or {}
+    if not isinstance(classifications, dict):
+        classifications = {}
+    if not isinstance(vulnerabilities, dict):
+        vulnerabilities = {}
+
+    def csv_value(value, limit=12000):
+        if isinstance(value, (list, tuple)):
+            value = "; ".join(str(item) for item in value)
+        elif value is None:
+            value = ""
+        elif not isinstance(value, (str, int, float, bool)):
+            value = ""
+        value = str(value).replace("\x00", "")
+        value = " ".join(value.split())[:limit]
+        if value.lstrip().startswith(("=", "+", "-", "@")):
+            value = "'" + value
+        return value
+
+    severity_map = {
+        4: "Critical", 3: "High", 2: "Medium", 1: "Low", 0: "Info",
+    }
+    output = io.StringIO(newline="")
+    fieldnames = [
+        "scan_id", "scan_status", "target", "finding_category", "severity",
+        "module", "method", "path", "parameter", "information",
+        "description", "remediation", "owasp_wstg", "references",
+    ]
+    writer = csv.DictWriter(output, fieldnames=fieldnames)
+    writer.writeheader()
+
+    for category, findings in vulnerabilities.items():
+        if not isinstance(findings, list):
+            continue
+        classification = classifications.get(category, {})
+        if not isinstance(classification, dict):
+            classification = {}
+
+        for finding in findings[:500]:
+            if not isinstance(finding, dict):
+                continue
+            writer.writerow({
+                "scan_id": scan_id,
+                "scan_status": csv_value(scan["status"]),
+                "target": csv_value(scan["target"], 2048),
+                "finding_category": csv_value(category, 300),
+                "severity": severity_map.get(finding.get("level"), "Unknown"),
+                "module": csv_value(finding.get("module"), 200),
+                "method": csv_value(finding.get("method"), 30),
+                "path": csv_value(finding.get("path"), 2048),
+                "parameter": csv_value(finding.get("parameter"), 500),
+                "information": csv_value(finding.get("info"), 6000),
+                "description": csv_value(classification.get("desc"), 6000),
+                "remediation": csv_value(classification.get("sol"), 6000),
+                "owasp_wstg": csv_value(finding.get("wstg")),
+                "references": csv_value(classification.get("ref")),
+            })
+
+    response = Response(
+        "\ufeff" + output.getvalue(),
+        mimetype="text/csv; charset=utf-8",
+    )
+    response.headers["Content-Disposition"] = (
+        f'attachment; filename="shadow-map-web-security-{scan_id}.csv"'
     )
     response.headers["X-Content-Type-Options"] = "nosniff"
     return response

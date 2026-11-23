@@ -495,8 +495,46 @@ def scan_web_security(
             "incomplete or no valid candidate was available.",
         )
 
+        wapiti_result = {
+            "status": "not_run",
+            "engine": "Wapiti 3.3.4",
+            "findings": [],
+            "requests_used": 0,
+            "requests_remaining": request_budget.remaining,
+            "verified_vulnerabilities": 0,
+            "enabled_active_modules": ["sql (GET only)", "xss (GET only)"],
+            "notes": [
+                "Wapiti was not run because page discovery was incomplete."
+            ],
+        }
+
         # Never run active checks on incomplete discovery.
         if discovery is not None and discovery_error is None:
+            try:
+                from scanner.wapiti_integration import run_wapiti_assessment
+
+                emit("Running restricted Wapiti assessment")
+                wapiti_result = run_wapiti_assessment(
+                    current_url,
+                    request_budget,
+                )
+            except Exception as exc:
+                wapiti_result = {
+                    "status": "failed",
+                    "engine": "Wapiti 3.3.4",
+                    "findings": [],
+                    "requests_used": 0,
+                    "requests_remaining": request_budget.remaining,
+                    "verified_vulnerabilities": 0,
+                    "enabled_active_modules": [
+                        "sql (GET only)", "xss (GET only)"
+                    ],
+                    "notes": [
+                        "Wapiti could not complete safely: "
+                        + str(exc)[:200]
+                    ],
+                }
+
             if xss_checks:
                 try:
                     emit("Testing reflected-input candidates")
@@ -529,6 +567,43 @@ def scan_web_security(
                         f"SQL injection assessment stopped safely: {str(exc)[:200]}",
                     )
 
+        # Convert Wapiti findings to the existing HTML/PDF report schema.
+        severity_levels = {
+            "critical": 4,
+            "high": 3,
+            "medium": 2,
+            "low": 1,
+            "info": 0,
+            "informational": 0,
+        }
+        vulnerabilities = {}
+
+        for finding in wapiti_result.get("findings", []):
+            if not isinstance(finding, dict):
+                continue
+
+            category = str(finding.get("category") or "Other")[:100]
+            severity = finding.get("severity")
+            if isinstance(severity, (int, float)) and not isinstance(severity, bool):
+                level = max(0, min(4, int(severity)))
+            else:
+                level = severity_levels.get(
+                    str(severity or "").strip().lower(), 0
+                )
+
+            vulnerabilities.setdefault(category, []).append({
+                "level": level,
+                "module": finding.get("module"),
+                "method": finding.get("method"),
+                "path": finding.get("path"),
+                "parameter": finding.get("parameter"),
+                "info": (
+                    finding.get("information")
+                    or finding.get("description")
+                    or "",
+                )[0],
+            })
+
         # OWASP ZAP runs only as its own explicitly selected Unified Scan
         # module. Web Security must not start or query a hidden ZAP scan.
         emit("Web Security assessment complete", percent=100)
@@ -547,6 +622,9 @@ def scan_web_security(
             "assessment_plan": assessment_plan,
             "reflected_input_assessment": xss_result,
             "sql_injection_assessment": sql_result,
+            "wapiti_assessment": wapiti_result,
+            "vulnerabilities": vulnerabilities,
+            "classifications": {},
             "request_budget": {
                 "maximum": request_budget.maximum,
                 "used": request_budget.used,

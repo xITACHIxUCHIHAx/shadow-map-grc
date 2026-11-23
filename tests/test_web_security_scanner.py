@@ -335,11 +335,15 @@ class WebSecurityAssessmentIntegrationTests(unittest.TestCase):
             patch(
                 "scanner.web_app_assessment.run_sql_injection_checks"
             ) as sql_runner,
+            patch(
+                "scanner.wapiti_integration.run_wapiti_assessment"
+            ) as wapiti_runner,
         ):
             result = scan_web_security("https://example.com/")
 
         xss_runner.assert_not_called()
         sql_runner.assert_not_called()
+        wapiti_runner.assert_not_called()
 
         self.assertEqual(
             result["reflected_input_assessment"]["status"], "not_run"
@@ -413,7 +417,33 @@ class WebSecurityAssessmentIntegrationTests(unittest.TestCase):
             patch(
                 "scanner.web_crawler.crawl_public_site",
                 return_value=discovery,
-            ),
+            ) as crawler_runner,
+            patch(
+                "scanner.wapiti_integration.run_wapiti_assessment",
+                return_value={
+                    "status": "completed",
+                    "engine": "Wapiti 3.3.4",
+                    "findings": [
+                        {
+                            "category": "SQL Injection",
+                            "severity": 3,
+                            "module": "sql",
+                            "method": "GET",
+                            "path": "/search",
+                            "parameter": "q",
+                            "information": "Potential SQL injection indicator",
+                            "evidence_status": "unverified",
+                        }
+                    ],
+                    "requests_used": 3,
+                    "requests_remaining": 44,
+                    "verified_vulnerabilities": 0,
+                    "enabled_active_modules": [
+                        "sql (GET only)", "xss (GET only)"
+                    ],
+                    "notes": [],
+                },
+            ) as wapiti_runner,
             patch(
                 "scanner.web_app_assessment.run_reflected_input_checks",
                 return_value=xss_result,
@@ -427,6 +457,27 @@ class WebSecurityAssessmentIntegrationTests(unittest.TestCase):
 
         xss_runner.assert_called_once()
         sql_runner.assert_called_once()
+        wapiti_runner.assert_called_once()
+
+        shared_budget = crawler_runner.call_args.kwargs["request_budget"]
+        self.assertEqual(
+            wapiti_runner.call_args.args[0],
+            "https://example.com/",
+        )
+        self.assertIs(wapiti_runner.call_args.args[1], shared_budget)
+        self.assertEqual(
+            result["wapiti_assessment"]["status"], "completed"
+        )
+
+        converted = result["vulnerabilities"]["SQL Injection"][0]
+        self.assertEqual(converted["level"], 3)
+        self.assertEqual(
+            converted["info"], "Potential SQL injection indicator"
+        )
+        self.assertEqual(converted["module"], "sql")
+        self.assertEqual(converted["method"], "GET")
+        self.assertEqual(converted["path"], "/search")
+        self.assertEqual(converted["parameter"], "q")
 
         for runner in (xss_runner, sql_runner):
             kwargs = runner.call_args.kwargs

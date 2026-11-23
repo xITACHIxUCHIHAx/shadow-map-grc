@@ -4,7 +4,7 @@
 
 {% block header %}
 <h1>Web Security Result</h1>
-<p class="subtitle">Saved HTTPS configuration assessment.</p>
+<p class="subtitle">Saved web application security assessment.</p>
 {% endblock %}
 
 {% block content %}
@@ -15,8 +15,9 @@
 <section class="panel">
   <div class="panel-heading">
     <div class="web-result-actions">
-      {% if record.status == "Completed" %}
+      {% if record.status in ["Completed", "Partial"] %}
         <a class="button" href="{{ url_for('export_web_security_pdf', scan_id=record.id) }}">Download PDF</a>
+        <a class="button" href="{{ url_for('export_web_security_csv', scan_id=record.id) }}">Download CSV</a>
       {% endif %}
     </div>
 
@@ -89,75 +90,60 @@
   <p class="muted">No Set-Cookie headers were observed in this response.</p>
   {% endif %}
 
-  {% set reflected_assessment = result.reflected_input_assessment|default({}, true) %}
-  {% set sql_assessment = result.sql_injection_assessment|default({}, true) %}
-  {% set assessment_plan = result.assessment_plan|default({}, true) %}
-  {% set boolean_checks = assessment_plan.sql_boolean_based_checks|default([], true) %}
+  {% set vulnerabilities = result.vulnerabilities|default({}, true) %}
+  {% set wapiti_count = namespace(value=0) %}
+  {% for category, findings in vulnerabilities.items() %}
+    {% if findings is sequence and findings is not string %}
+      {% set wapiti_count.value = wapiti_count.value + (findings|length) %}
+    {% endif %}
+  {% endfor %}
 
-  {% if result.reflected_input_assessment is defined
-        or result.sql_injection_assessment is defined
-        or result.assessment_plan is defined %}
-  <div class="panel-heading"><h2>Vulnerability Assessment Coverage</h2></div>
+  <div class="panel-heading">
+    <h2>Wapiti Vulnerability Findings</h2>
+    <span class="status">{{ wapiti_count.value }} reported</span>
+  </div>
+
+  {% if wapiti_count.value %}
   <div class="table-wrap">
     <table>
       <thead>
         <tr>
-          <th>Assessment</th>
-          <th>Parameter</th>
-          <th>Status</th>
-          <th>Confidence</th>
-          <th>Verification</th>
+          <th>Finding</th><th>Severity</th><th>Module</th>
+          <th>Method</th><th>Path</th><th>Parameter</th><th>Information</th>
         </tr>
       </thead>
       <tbody>
-        {% for label, assessment in [
-          ("Reflected-input check", reflected_assessment),
-          ("Error-based SQL injection", sql_assessment)
-        ] %}
-          {% if assessment.checks|default([], true) %}
-            {% for check in assessment.checks %}
+        {% for category, findings in vulnerabilities.items() %}
+          {% if findings is sequence and findings is not string %}
+            {% for finding in findings %}
             <tr>
-              <td>{{ label }}</td>
-              <td>{{ check.parameter or "—" }}</td>
-              <td>{{ (check.status or assessment.status or "not recorded")|replace("_", " ")|title }}</td>
-              <td>{{ check.confidence or "—" }}</td>
-              <td>{{ "Not verified" if check.verified is sameas false else "Not recorded" }}</td>
+              <td>{{ category }}</td>
+              <td>
+                {% set severity_map = {4: "Critical", 3: "High", 2: "Medium", 1: "Low", 0: "Info"} %}
+                {{ severity_map.get(finding.level, "Unknown") }}
+              </td>
+              <td>{{ finding.module or "—" }}</td>
+              <td>{{ finding.method or "—" }}</td>
+              <td>{{ finding.path or "—" }}</td>
+              <td>{{ finding.parameter or "—" }}</td>
+              <td>{{ finding.info or "—" }}</td>
             </tr>
             {% endfor %}
-          {% elif assessment %}
-            <tr>
-              <td>{{ label }}</td>
-              <td>—</td>
-              <td>{{ (assessment.status or "not recorded")|replace("_", " ")|title }}</td>
-              <td>—</td>
-              <td>Not verified</td>
-            </tr>
           {% endif %}
         {% endfor %}
-
-        {% for check in boolean_checks %}
-        <tr>
-          <td>Boolean-based SQL injection</td>
-          <td>{{ check.parameter or "—" }}</td>
-          <td>Planned — Not Tested</td>
-          <td>—</td>
-          <td>Not verified</td>
-        </tr>
-        {% endfor %}
-
-        {% if not reflected_assessment and not sql_assessment and not boolean_checks %}
-        <tr><td colspan="5">No assessment checks recorded.</td></tr>
-        {% endif %}
       </tbody>
     </table>
   </div>
   <div class="notice">
-    Suspected indicators are unverified evidence, not confirmed vulnerabilities.
-    Boolean-based SQL injection candidates are planned for review only; no Boolean test requests were sent.
+    Wapiti findings are scanner-reported indicators, not automatically confirmed
+    vulnerabilities. Validate each finding safely within the authorized scope
+    before treating it as a confirmed issue.
   </div>
+  {% else %}
+    <p class="muted">No Wapiti vulnerability findings were recorded for this scan.</p>
   {% endif %}
 
-  <div class="notice"><strong>Interpretation:</strong> These are configuration observations, not confirmed vulnerabilities. Review each result in the context of the website and its application requirements.</div>
+  <div class="notice"><strong>Interpretation:</strong> Wapiti findings are indicators requiring manual validation. Security-header and cookie observations describe the saved HTTP response; they are not, by themselves, proof of exploitability.</div>
   {% if result.discovery %}
     <div class="panel-heading">
         <h2>Page Discovery</h2>
@@ -195,7 +181,7 @@
         {% endfor %}
     </ul>
 
-    <h3>Forms observed (not submitted)</h3>
+    <h3>Forms identified during discovery</h3>
     <div class="table-wrap">
         <table>
             <thead>
