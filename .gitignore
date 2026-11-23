@@ -1,30 +1,15 @@
-venv/
-__pycache__/
-*.py[cod]
-.env
-.env.*
-!.env.example
-data/*.db
-data/*.db-journal
-data/*.db-wal
-data/*.db-shm
-
-# Local development backups and test artifacts
-backups/
-*.backup
-*.backup-*
-*.bak
-*.before-*
-*.before_*
-data/shadow_map_test_*.db
-
-# Local environments
+# Python environments and generated files
 venv/
 .venv/
 __pycache__/
 *.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 
-# Secrets
+# Environment secrets
 .env
 .env.*
 !.env.example
@@ -33,19 +18,33 @@ __pycache__/
 data/*
 !data/.gitkeep
 *.db
+*.db-*
 *.sqlite
+*.sqlite-*
 *.sqlite3
+*.sqlite3-*
 
-# Backups and logs
+# Backups, logs and temporary files
+backups/
+backup/
 *.backup
 *.backup-*
 *.bak
+*.bak*
 *.old
 *.before-*
-*.log
-backups/
-backup/
-
-*.bak*
-*.backup*
+*.before_*
 *.tmp
+*.log
+*~
+
+# Build and package artifacts
+build/
+dist/
+*.egg-info/
+
+# Editor and operating-system files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

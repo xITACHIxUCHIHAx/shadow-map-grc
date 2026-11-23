@@ -1,0 +1,61 @@
+# Git and editor metadata
+.git/
+.gitignore
+.github/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Secrets and local configuration
+.env
+.env.*
+
+# Python development environments and caches
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local databases, assessment records and ZAP runtime data
+data/
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+*.log
+
+# Backups and temporary files
+backups/
+backup/
+*.backup
+*.backup-*
+*.bak
+*.bak*
+*.old
+*.before-*
+*.before_*
+*.tmp
+*~
+
+# Development-only content
+tests/
+docs/
+README.md
+LICENSE
+pytest.ini
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Local setup template (kept in GitHub, not needed in image)
+.env.example
