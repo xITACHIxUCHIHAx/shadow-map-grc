@@ -608,8 +608,12 @@ class NmapScannerOfflineTests(unittest.TestCase):
         self.assertEqual(result["os_match"], "")
         self.assertEqual(result["os_accuracy"], "")
 
+    @patch("scanner.nmap_scanner.platform.system", return_value="Linux")
+    @patch("scanner.nmap_scanner.os.geteuid", return_value=1000)
     @patch("scanner.nmap_scanner.subprocess.Popen")
-    def test_os_detection_uses_restricted_helper(self, mock_popen):
+    def test_os_detection_uses_restricted_helper(
+        self, mock_popen, mock_uid, mock_system
+    ):
         os_xml = VALID_XML.replace(
             "<ports>",
             """<os>
@@ -643,6 +647,30 @@ class NmapScannerOfflineTests(unittest.TestCase):
         self.assertTrue(result["os_detection_requested"])
         self.assertEqual(result["os_detection_status"], "detected")
         self.assertEqual(result["os_match"], "Example Linux")
+
+    @patch("scanner.nmap_scanner.platform.system", return_value="Linux")
+    @patch("scanner.nmap_scanner.os.geteuid", return_value=0)
+    @patch("scanner.nmap_scanner.subprocess.Popen")
+    def test_linux_root_uses_native_nmap_without_helper_stdin(
+        self, mock_popen, mock_uid, mock_system
+    ):
+        mock_popen.return_value = FakeProcess(stdout=VALID_XML)
+
+        result = nmap_scanner.run_nmap(
+            "192.0.2.10", "quick", detect_os=True
+        )
+
+        command = mock_popen.call_args.args[0]
+        self.assertIn("-sS", command)
+        self.assertIn("-O", command)
+        self.assertEqual(command[-1], "192.0.2.10")
+        self.assertNotIn("sudo", command)
+        self.assertIs(
+            mock_popen.call_args.kwargs["stdin"],
+            subprocess.DEVNULL,
+        )
+        self.assertEqual(mock_popen.return_value.stdin.captured_value, "")
+        self.assertTrue(result["os_detection_requested"])
 
     @patch("scanner.nmap_scanner.platform.system", return_value="Darwin")
     @patch("scanner.nmap_scanner.os.geteuid", return_value=1000)

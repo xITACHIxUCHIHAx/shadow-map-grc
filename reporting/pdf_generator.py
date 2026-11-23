@@ -524,6 +524,38 @@ def build_web_security_pdf(*, scan, result):
     forms = discovery.get("forms") or []
     discovered_urls = discovery.get("discovered_urls") or []
     api_endpoints = discovery.get("api_endpoints") or []
+    classifications = result.get("classifications") or {}
+    vulnerabilities = result.get("vulnerabilities") or {}
+    wapiti_findings = []
+
+    if isinstance(vulnerabilities, dict):
+        for category, items in vulnerabilities.items():
+            if not isinstance(items, list):
+                continue
+            classification = (
+                classifications.get(category, {})
+                if isinstance(classifications, dict) else {}
+            )
+            if not isinstance(classification, dict):
+                classification = {}
+
+            for finding in items[:500]:
+                if not isinstance(finding, dict):
+                    continue
+                level = finding.get("level")
+                severity = {
+                    4: "Critical", 3: "High", 2: "Medium",
+                    1: "Low", 0: "Info",
+                }.get(level, "Unknown")
+                wapiti_findings.append({
+                    "category": category,
+                    "severity": severity,
+                    "module": finding.get("module"),
+                    "method": finding.get("method"),
+                    "path": finding.get("path"),
+                    "parameter": finding.get("parameter"),
+                    "info": finding.get("info"),
+                })
 
     present = sum(1 for item in headers if item.get("present"))
     missing = sum(1 for item in headers if not item.get("present"))
@@ -538,6 +570,7 @@ def build_web_security_pdf(*, scan, result):
         ["Additional URLs discovered", str(len(discovered_urls))],
         ["Forms observed (not submitted)", str(len(forms))],
         ["Likely API endpoints identified", str(len(api_endpoints))],
+        ["Wapiti findings reported", str(len(wapiti_findings))],
     ]
     table = Table(summary, colWidths=[65 * mm, 105 * mm])
     table.setStyle(TableStyle([
@@ -635,94 +668,37 @@ def build_web_security_pdf(*, scan, result):
             styles["body"],
         ))
 
-    # Vulnerability assessment coverage (available in newer saved scans).
-    reflected_assessment = result.get("reflected_input_assessment") or {}
-    sql_assessment = result.get("sql_injection_assessment") or {}
-    assessment_plan = result.get("assessment_plan") or {}
-    boolean_checks = assessment_plan.get("sql_boolean_based_checks") or []
-
-    has_assessment_data = any(
-        key in result
-        for key in (
-            "reflected_input_assessment",
-            "sql_injection_assessment",
-            "assessment_plan",
-        )
-    )
-
-    if has_assessment_data:
-        story.append(Paragraph(
-            "Vulnerability Assessment Coverage", styles["section"]
-        ))
-
-        assessment_rows = [[
-            Paragraph("Assessment", styles["table_header"]),
+    story.append(Paragraph("Wapiti Vulnerability Findings", styles["section"]))
+    if wapiti_findings:
+        data = [[
+            Paragraph("Category", styles["table_header"]),
+            Paragraph("Severity", styles["table_header"]),
+            Paragraph("Module", styles["table_header"]),
+            Paragraph("Method / Path", styles["table_header"]),
             Paragraph("Parameter", styles["table_header"]),
-            Paragraph("Status", styles["table_header"]),
-            Paragraph("Confidence", styles["table_header"]),
-            Paragraph("Verification", styles["table_header"]),
+            Paragraph("Finding Information", styles["table_header"]),
         ]]
-
-        for label, assessment in (
-            ("Reflected-input check", reflected_assessment),
-            ("Error-based SQL injection", sql_assessment),
-        ):
-            checks = assessment.get("checks") or []
-            if checks:
-                for check in checks:
-                    assessment_rows.append([
-                        Paragraph(_safe(label), styles["table_cell"]),
-                        Paragraph(_safe(check.get("parameter") or "—"),
-                                  styles["table_cell"]),
-                        Paragraph(_safe(
-                            (check.get("status") or assessment.get("status")
-                             or "not recorded").replace("_", " ").title()
-                        ), styles["table_cell"]),
-                        Paragraph(_safe(check.get("confidence") or "—"),
-                                  styles["table_cell"]),
-                        Paragraph(
-                            "Not verified" if check.get("verified") is False
-                            else "Not recorded",
-                            styles["table_cell"],
-                        ),
-                    ])
-            elif assessment:
-                assessment_rows.append([
-                    Paragraph(_safe(label), styles["table_cell"]),
-                    Paragraph("—", styles["table_cell"]),
-                    Paragraph(_safe(
-                        (assessment.get("status") or "not recorded")
-                        .replace("_", " ").title()
-                    ), styles["table_cell"]),
-                    Paragraph("—", styles["table_cell"]),
-                    Paragraph("Not verified", styles["table_cell"]),
-                ])
-
-        for check in boolean_checks:
-            assessment_rows.append([
-                Paragraph("Boolean-based SQL injection", styles["table_cell"]),
-                Paragraph(_safe(check.get("parameter") or "—"),
-                          styles["table_cell"]),
-                Paragraph("Planned — Not Tested", styles["table_cell"]),
-                Paragraph("—", styles["table_cell"]),
-                Paragraph("Not verified", styles["table_cell"]),
+        for finding in wapiti_findings:
+            method_path = " ".join(
+                str(value) for value in (
+                    finding.get("method"), finding.get("path")
+                ) if value
+            )
+            data.append([
+                Paragraph(_safe(finding.get("category")), styles["table_cell"]),
+                Paragraph(_safe(finding.get("severity")), styles["table_cell"]),
+                Paragraph(_safe(finding.get("module")), styles["table_cell"]),
+                Paragraph(_safe(method_path), styles["table_cell"]),
+                Paragraph(_safe(finding.get("parameter")), styles["table_cell"]),
+                Paragraph(_safe(finding.get("info")), styles["table_cell"]),
             ])
 
-        if len(assessment_rows) == 1:
-            assessment_rows.append([
-                Paragraph("Assessment coverage", styles["table_cell"]),
-                Paragraph("—", styles["table_cell"]),
-                Paragraph("No checks recorded", styles["table_cell"]),
-                Paragraph("—", styles["table_cell"]),
-                Paragraph("Not verified", styles["table_cell"]),
-            ])
-
-        assessment_table = Table(
-            assessment_rows,
-            colWidths=[39 * mm, 39 * mm, 34 * mm, 25 * mm, 33 * mm],
+        table = Table(
+            data,
+            colWidths=[31 * mm, 17 * mm, 20 * mm, 35 * mm, 22 * mm, 48 * mm],
             repeatRows=1,
         )
-        assessment_table.setStyle(TableStyle([
+        table.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), NAVY),
             ("ROWBACKGROUNDS", (0, 1), (-1, -1), [WHITE, LIGHT_GREY]),
             ("GRID", (0, 0), (-1, -1), 0.35, LIGHT_GREY),
@@ -731,15 +707,21 @@ def build_web_security_pdf(*, scan, result):
             ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
         ]))
         story.extend([
-            assessment_table,
+            table,
             Spacer(1, 3 * mm),
             Paragraph(
-                "Suspected indicators are unverified evidence, not confirmed "
-                "vulnerabilities. Boolean-based SQL injection candidates are "
-                "planned for review only; no Boolean test requests were sent.",
+                "Wapiti findings are scanner-reported indicators, not "
+                "automatically confirmed vulnerabilities. Validate each "
+                "finding safely within the authorized scope before treating "
+                "it as a confirmed issue.",
                 styles["small"],
             ),
         ])
+    else:
+        story.append(Paragraph(
+            "No Wapiti vulnerability findings were recorded for this scan.",
+            styles["body"],
+        ))
 
     if pages or discovered_urls or forms or api_endpoints:
         story.append(Paragraph("Page Discovery", styles["section"]))
@@ -777,7 +759,7 @@ def build_web_security_pdf(*, scan, result):
                 story.append(Paragraph(f"• {_safe(url)}", styles["small"]))
 
         if forms:
-            story.append(Paragraph("Forms Observed (Not Submitted)", styles["heading"]))
+            story.append(Paragraph("Forms Identified During Discovery", styles["heading"]))
             data = [[
                 Paragraph("Page", styles["table_header"]),
                 Paragraph("Method", styles["table_header"]),

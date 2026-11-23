@@ -2691,59 +2691,161 @@ def generate_web_security_drafts(result, source_record_id=None):
                 ))
                 created += cursor.rowcount
 
-        # 4. SQL Injection Findings
-        sql_res = result.get("sql_injection_assessment") or {}
-        for check in sql_res.get("checks", []):
-            if check.get("status") == "suspected":
-                param = check.get("parameter")
-                loc = check.get("location")
-                fingerprint_source = f"web_security|{target}|sqli|{param}"
-                fingerprint = make_fingerprint(fingerprint_source)
+        # Wapiti vulnerability findings
+        # Wapiti is the active web vulnerability scanning engine.
+        severity_map = {
+            4: "Critical",
+            3: "High",
+            2: "Medium",
+            1: "Low",
+            0: "Info",
+        }
 
-                title = f"Potential SQL Injection on {target} (Parameter: {param})"
-                description = "A database error signature was detected in the response to a modified request. This is a suspected vulnerability, not a confirmed exploit. Manual verification is required."
-                evidence = f"Location: {loc}; Parameter: {param}; Probe: {check.get('probe')}; Indicators: {check.get('database_error_indicators')}"
-                recommendation = "Review the application code for unsanitized input in this parameter. Use parameterized queries. Manually verify this finding."
+        def clean_wapiti(value, limit=2000):
+            if not isinstance(value, (str, int, float)):
+                return ""
+            return " ".join(
+                str(value).replace("\\x00", "").split()
+            )[:limit]
 
-                cursor = db.execute("""
-                    INSERT OR IGNORE INTO draft_findings (
-                        source, source_record_id, fingerprint, target, title,
-                        description, evidence, suggested_severity, confidence,
-                        recommendation, iso_controls, status, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Draft', ?, ?)
-                """, (
-                    "web_security", source_record_id, fingerprint, target,
-                    title, description, evidence, "High", "Medium",
-                    recommendation, "A.8.28", utc_now(), utc_now(),
-                ))
-                created += cursor.rowcount
+        classifications = result.get("classifications") or {}
+        vulnerabilities = result.get("vulnerabilities") or {}
 
-        # 5. Cross-Site Scripting (XSS) Findings
-        xss_res = result.get("reflected_input_assessment") or {}
-        for check in xss_res.get("checks", []):
-            if check.get("status") == "suspected":
-                param = check.get("parameter")
-                loc = check.get("location")
-                fingerprint_source = f"web_security|{target}|xss|{param}"
-                fingerprint = make_fingerprint(fingerprint_source)
+        if isinstance(vulnerabilities, dict):
+            for category, findings in vulnerabilities.items():
+                if not isinstance(findings, list):
+                    continue
 
-                title = f"Potential Cross-Site Scripting (XSS) on {target} (Parameter: {param})"
-                description = "A unique marker was sent in a request and was reflected in the response. Depending on the context, this could lead to Cross-Site Scripting. This is an unverified indicator, not a confirmed exploit."
-                evidence = f"Location: {loc}; Parameter: {param}; Probe: {check.get('probe')}; Contexts: {check.get('contexts')}"
-                recommendation = "Review the application context where the input is reflected. Ensure output encoding is correctly applied for the specific context (HTML, JavaScript, attribute). Manually verify this finding."
+                category_name = clean_wapiti(category, 200)
+                classification = (
+                    classifications.get(category, {})
+                    if isinstance(classifications, dict) else {}
+                )
+                if not isinstance(classification, dict):
+                    classification = {}
 
-                cursor = db.execute("""
-                    INSERT OR IGNORE INTO draft_findings (
-                        source, source_record_id, fingerprint, target, title,
-                        description, evidence, suggested_severity, confidence,
-                        recommendation, iso_controls, status, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Draft', ?, ?)
-                """, (
-                    "web_security", source_record_id, fingerprint, target,
-                    title, description, evidence, "High", "Low",
-                    recommendation, "A.8.28", utc_now(), utc_now(),
-                ))
-                created += cursor.rowcount
+                category_description = clean_wapiti(
+                    classification.get("desc"), 3000
+                )
+                solution = clean_wapiti(
+                    classification.get("sol"), 3000
+                )
+                references = classification.get("ref") or []
+                if not isinstance(references, list):
+                    references = [references]
+
+                for finding in findings[:500]:
+                    if not isinstance(finding, dict):
+                        continue
+
+                    level = finding.get("level")
+                    if (
+                        isinstance(level, bool)
+                        or not isinstance(level, int)
+                        or level not in severity_map
+                    ):
+                        continue
+
+                    method = clean_wapiti(finding.get("method"), 20).upper()
+                    location = clean_wapiti(finding.get("path"), 2048)
+                    parameter = clean_wapiti(
+                        finding.get("parameter"), 300
+                    )
+                    module = clean_wapiti(finding.get("module"), 100)
+                    info = clean_wapiti(finding.get("info"), 3000)
+
+                    wstg = finding.get("wstg") or []
+                    if not isinstance(wstg, list):
+                        wstg = [wstg]
+                    wstg = [
+                        clean_wapiti(item, 100)
+                        for item in wstg[:20]
+                    ]
+                    wstg = [item for item in wstg if item]
+
+                    safe_references = [
+                        clean_wapiti(item, 500)
+                        for item in references[:20]
+                    ]
+                    safe_references = [
+                        item for item in safe_references if item
+                    ]
+
+                    fingerprint_source = (
+                        f"wapiti|{target.rstrip('/').lower()}|"
+                        f"{category_name.casefold()}|{module.casefold()}|"
+                        f"{method}|{location}|{parameter.casefold()}"
+                    )
+                    fingerprint = make_fingerprint(fingerprint_source)
+
+                    title_parts = [
+                        category_name or "Web vulnerability",
+                        f"on {target}",
+                    ]
+                    if parameter:
+                        title_parts.append(f"(Parameter: {parameter})")
+                    title = " ".join(title_parts)[:500]
+
+                    description_parts = [
+                        category_description,
+                        info,
+                    ]
+                    description = " ".join(
+                        part for part in description_parts if part
+                    )
+                    if not description:
+                        description = (
+                            "Wapiti reported a web application security "
+                            "finding. Validate its applicability and "
+                            "reproducibility before remediation."
+                        )
+                    description = description[:6000]
+
+                    evidence_parts = [
+                        "Source: Wapiti web vulnerability scanner",
+                        f"Target: {target}",
+                        f"Category: {category_name}",
+                        f"Module: {module or 'unspecified'}",
+                        f"Severity level: {level}",
+                        f"HTTP method: {method or 'unspecified'}",
+                        f"Path: {location or 'unspecified'}",
+                        f"Parameter: {parameter or 'unspecified'}",
+                        f"Finding information: {info or 'not supplied'}",
+                    ]
+                    if wstg:
+                        evidence_parts.append(
+                            "OWASP WSTG: " + ", ".join(wstg)
+                        )
+                    if safe_references:
+                        evidence_parts.append(
+                            "References: " + "; ".join(safe_references)
+                        )
+
+                    evidence = "; ".join(evidence_parts)[:12000]
+
+                    recommendation = solution or (
+                        "Review the affected application component and "
+                        "Wapiti evidence. Reproduce the finding safely "
+                        "within the authorized scope, determine its "
+                        "business impact, and document remediation."
+                    )
+
+                    cursor = db.execute("""
+                        INSERT OR IGNORE INTO draft_findings (
+                            source, source_record_id, fingerprint, target,
+                            title, description, evidence, suggested_severity,
+                            confidence, recommendation, iso_controls, status,
+                            created_at, updated_at
+                        ) VALUES (
+                            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Draft', ?, ?
+                        )
+                    """, (
+                        "web_security", source_record_id, fingerprint, target,
+                        title, description, evidence, severity_map[level],
+                        "Unassessed", recommendation, "",
+                        utc_now(), utc_now(),
+                    ))
+                    created += cursor.rowcount
 
         # 6. OWASP ZAP Alerts
         zap_alerts = result.get("zap_alerts", [])

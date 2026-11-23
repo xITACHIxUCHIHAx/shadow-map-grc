@@ -258,5 +258,117 @@ class ZapImportTests(unittest.TestCase):
         self.assertEqual(risks.import_zap_alerts_to_drafts(alerts), 0)
 
 
+
+    def test_wapiti_findings_are_imported_as_scan_linked_drafts(self):
+        result = {
+            "target": "https://example.test/",
+            "classifications": {
+                "SQL Injection": {
+                    "desc": "SQL injection vulnerability",
+                    "sol": "Use parameterized queries",
+                    "ref": ["https://example.test/reference"],
+                    "wstg": ["WSTG-INPV-05"],
+                }
+            },
+            "vulnerabilities": {
+                "SQL Injection": [{
+                    "method": "GET",
+                    "path": "https://example.test/search",
+                    "info": "SQL error response detected",
+                    "level": 3,
+                    "parameter": "query",
+                    "module": "sql",
+                    "wstg": ["WSTG-INPV-05"],
+                    "http_request": "sensitive request data",
+                    "curl_command": "sensitive curl data",
+                }]
+            },
+            "anomalies": {},
+            "additionals": {},
+        }
+
+        self.assertEqual(
+            risks.generate_web_security_drafts(result, source_record_id=201), 1
+        )
+        self.assertEqual(
+            risks.generate_web_security_drafts(result, source_record_id=201), 0
+        )
+        self.assertEqual(
+            risks.generate_web_security_drafts(result, source_record_id=202), 1
+        )
+
+        with self.connect_test_db() as db:
+            rows = db.execute(
+                """
+                SELECT source, source_record_id, title, evidence,
+                       suggested_severity, confidence, status, iso_controls
+                FROM draft_findings ORDER BY source_record_id
+                """
+            ).fetchall()
+
+        self.assertEqual(len(rows), 2)
+        for row in rows:
+            self.assertEqual(row["source"], "web_security")
+            self.assertIn("SQL Injection", row["title"])
+            self.assertEqual(row["suggested_severity"], "High")
+            self.assertEqual(row["confidence"], "Unassessed")
+            self.assertEqual(row["status"], "Draft")
+            self.assertEqual(row["iso_controls"], "")
+            self.assertIn("WSTG-INPV-05", row["evidence"])
+            self.assertNotIn("sensitive request data", row["evidence"])
+            self.assertNotIn("sensitive curl data", row["evidence"])
+
+    def test_wapiti_severity_levels_are_preserved(self):
+        for level, expected in (
+            (4, "Critical"), (3, "High"), (2, "Medium"),
+            (1, "Low"), (0, "Info"),
+        ):
+            with self.subTest(level=level):
+                result = {
+                    "target": "https://example.test/",
+                    "vulnerabilities": {
+                        f"Category {level}": [{
+                            "method": "GET",
+                            "path": f"https://example.test/{level}",
+                            "info": "Finding description",
+                            "level": level,
+                            "parameter": "q",
+                            "module": "test",
+                        }]
+                    },
+                }
+                scan_id = 300 + level
+                self.assertEqual(
+                    risks.generate_web_security_drafts(
+                        result, source_record_id=scan_id
+                    ), 1
+                )
+                with self.connect_test_db() as db:
+                    row = db.execute(
+                        "SELECT suggested_severity FROM draft_findings "
+                        "WHERE source_record_id = ?", (scan_id,)
+                    ).fetchone()
+                self.assertEqual(row["suggested_severity"], expected)
+
+    def test_wapiti_anomalies_and_additionals_are_not_vulnerability_drafts(self):
+        result = {
+            "target": "https://example.test/",
+            "vulnerabilities": {},
+            "anomalies": {
+                "Timeout": [{"info": "Request timed out", "level": 2}]
+            },
+            "additionals": {
+                "Fingerprint": [{"info": "Server fingerprint"}]
+            },
+        }
+        self.assertEqual(
+            risks.generate_web_security_drafts(result, source_record_id=203), 0
+        )
+        with self.connect_test_db() as db:
+            count = db.execute(
+                "SELECT COUNT(*) FROM draft_findings"
+            ).fetchone()[0]
+        self.assertEqual(count, 0)
+
 if __name__ == "__main__":
     unittest.main()

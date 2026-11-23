@@ -81,6 +81,37 @@ class WebSecurityPDFTests(unittest.TestCase):
         self.assertTrue(pdf.startswith(b"%PDF-"))
         self.assertGreater(len(pdf), 1000)
 
+    def test_generates_pdf_with_wapiti_vulnerability_findings(self):
+        result = {
+            "target": "https://example.com",
+            "status_code": 200,
+            "headers": [],
+            "cookies": [],
+            "notes": [],
+            "classifications": {
+                "SQL Injection": {
+                    "desc": "Database query injection indicator.",
+                    "sol": "Use parameterized queries.",
+                    "ref": ["https://owasp.org/"],
+                }
+            },
+            "vulnerabilities": {
+                "SQL Injection": [{
+                    "level": 3,
+                    "module": "sql",
+                    "method": "GET",
+                    "path": "/search",
+                    "parameter": "q",
+                    "info": "Potential SQL injection indicator.",
+                    "http_request": "PRIVATE_REQUEST_DATA",
+                    "curl_command": "PRIVATE_CURL_DATA",
+                }]
+            },
+        }
+        pdf = build_web_security_pdf(scan=self.scan, result=result)
+        self.assertTrue(pdf.startswith(b"%PDF-"))
+        self.assertGreater(len(pdf), 1000)
+
     def test_generates_pdf_with_empty_discovery(self):
         result = {
             "target": "https://example.com",

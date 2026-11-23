@@ -482,6 +482,20 @@ def _prepare_os_detection_command(target, scan_profile, custom_ports=None):
             if custom_ports
             else f"profile: {scan_profile}"
         )
+        get_effective_uid = getattr(os, "geteuid", None)
+        if get_effective_uid is not None and get_effective_uid() == 0:
+            command = build_nmap_command(
+                target,
+                scan_profile,
+                detect_os=True,
+                custom_ports=custom_ports,
+            )
+            return (
+                command,
+                f"Nmap OS detection (root execution; {port_display})",
+                False,
+            )
+
         return (
             ["sudo", "-n", "/usr/local/sbin/shadow-map-nmap-os-helper"],
             f"sudo -n shadow-map-nmap-os-helper "
@@ -677,11 +691,19 @@ def run_nmap(
             if detect_os:
                 system = platform.system()
                 if system == "Linux":
-                    message = (
-                        "OS detection could not start or complete. Check "
-                        "that the restricted sudo helper is installed and "
-                        "permitted for this user. "
-                    )
+                    get_effective_uid = getattr(os, "geteuid", None)
+                    if get_effective_uid is not None and get_effective_uid() == 0:
+                        message = (
+                            "Linux Nmap OS detection failed. Check that "
+                            "the container has the Docker NET_RAW capability "
+                            "and can access the target network. "
+                        )
+                    else:
+                        message = (
+                            "OS detection could not start or complete. Check "
+                            "that the restricted sudo helper is installed and "
+                            "permitted for this user. "
+                        )
                 elif system == "Windows":
                     message = (
                         "Windows Nmap OS detection failed. Confirm that "
