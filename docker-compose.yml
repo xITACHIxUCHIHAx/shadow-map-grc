@@ -1,9 +1,6 @@
 services:
   grc:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: shadow-map-grc:latest
+    image: xitachixuchihax/shadow-map-grc:latest
     container_name: grc
     user: "0:0"
     init: true

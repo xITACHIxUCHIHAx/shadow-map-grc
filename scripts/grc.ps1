@@ -20,9 +20,9 @@ Push-Location $ProjectDir
 
 try {
     switch ($Action) {
-        "start"   { docker compose up -d --build }
+        "start"   { docker compose pull grc; if ($LASTEXITCODE -ne 0) { throw "Docker image pull failed." }; docker compose up -d }
         "stop"    { docker compose down }
-        "restart" { docker compose restart }
+        "restart" { docker compose pull grc; if ($LASTEXITCODE -ne 0) { throw "Docker image pull failed." }; docker compose up -d }
         "status"  { docker compose ps }
         "logs"    { docker compose logs -f }
     }

@@ -45,9 +45,15 @@ run_compose() {
 }
 
 case "${1:-}" in
-    start)   run_compose up -d --build ;;
-    stop)    run_compose down ;;
-    restart) run_compose up -d --build ;;
+    start)
+        run_compose pull grc
+        run_compose up -d
+        ;;
+    stop) run_compose down ;;
+    restart)
+        run_compose pull grc
+        run_compose up -d
+        ;;
     status)  run_compose ps ;;
     logs)    run_compose logs -f ;;
     *)

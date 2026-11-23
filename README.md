@@ -42,10 +42,18 @@ Shadow Map GRC is a Flask-based application that combines security assessment, r
 
 - Windows, macOS or Linux/Kali
 - Docker and Docker Compose
-- Internet connection for the initial build
+- Internet connection for the initial Docker image pull
 - Sufficient disk space for Docker images and application data
 
 The supplied Docker image includes Python, Nmap, Java 21 and OWASP ZAP 2.17.0.
+
+The prebuilt image is available on Docker Hub:
+
+```bash
+docker pull xitachixuchihax/shadow-map-grc:latest
+```
+
+The startup scripts automatically pull the latest published image before starting or restarting the application.
 
 ## Installing Git
 
@@ -259,7 +267,7 @@ bash scripts/grc start
 .\scripts\grc.ps1 start
 ```
 
-The first startup builds the Docker image and downloads dependencies. This may take some time.
+The first startup downloads the published Docker image. This may take some time depending on your internet connection.
 
 ### 5. Open the application
 
