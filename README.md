@@ -1,427 +1,463 @@
 # Shadow Map GRC
 
-Shadow Map GRC is a local security assessment and Governance, Risk, and Compliance (GRC) application built with Python, Flask, and SQLite.
+**Security Assessment and Governance, Risk & Compliance Platform**
 
-It brings security scanning, findings review, risk tracking, and ISO/IEC 27001:2022 control traceability together in one application.
+Shadow Map GRC is a Flask-based application that combines security assessment, risk management and GRC documentation in one platform.
 
-## Download Shadow Map GRC
+| Information | Details |
+|---|---|
+| Project | Shadow Map GRC |
+| Author | [xITACHIxUCHIHAx](https://github.com/xITACHIxUCHIHAx) |
+| License | MIT |
+| Technology | Python, Flask, SQLite |
+| Deployment | Docker and Docker Compose |
 
-Download the project before installing and running it.
+## Screenshots
 
-### Method 1: Download ZIP (Recommended for beginners)
+### Dashboard
+![Dashboard](docs/screenshots/dashboard.png)
 
-1. Open the [Shadow Map GRC GitHub repository](https://github.com/xITACHIxUCHIHAx/shadow-map-grc).
-2. Click **Code**.
-3. Select **Download ZIP**.
-4. Extract the downloaded ZIP file.
-5. Open a terminal or command prompt inside the extracted project folder.
+### Unified Scan
+![Unified Scan](docs/screenshots/unified-scan.png)
 
-### Method 2: Clone using Git
-
-**Windows (PowerShell or Command Prompt):**
-
-    git clone https://github.com/xITACHIxUCHIHAx/shadow-map-grc.git
-    cd shadow-map-grc
-
-**macOS (Terminal):**
-
-    git clone https://github.com/xITACHIxUCHIHAx/shadow-map-grc.git
-    cd shadow-map-grc
-
-**Linux (Terminal):**
-
-    git clone https://github.com/xITACHIxUCHIHAx/shadow-map-grc.git
-    cd shadow-map-grc
-
-To update an existing Git clone later:
-
-    git pull
+### Risk Register
+![Risk Register](docs/screenshots/risk-register.png)
 
 ## Features
 
-- Dashboard and scan history
 - Unified security assessments
 - Nmap network and service scanning
-- LAN Monitor and local network discovery
-- Cross-platform network interface and gateway detection (Linux, Windows, and macOS)
-- Web security assessment and read-only discovery
-- OWASP ZAP integration and proxy management
+- LAN Monitor
+- Web Security and Wapiti integration
+- OWASP ZAP integration
 - Firewall assessment
-- Threat intelligence and vulnerability information
-- Combined findings and findings review
-- Risk register and custom detection rules
+- Threat Intelligence
+- Findings Review and Risk Register
+- Custom Rules
 - ISO/IEC 27001:2022 control traceability
 - PDF reports and CSV exports
-- Records management
-- Scan progress monitoring
-
-Available capabilities depend on configuration, installed tools, network access, and permissions.
-
-## Application Screenshots
-
-### Dashboard
-
-The dashboard provides an overview of assessment activity, findings, and risk treatment.
-
-![Shadow Map GRC Dashboard](docs/screenshots/dashboard.png)
-
-### Unified Scan
-
-Run and monitor unified security assessments from one workspace.
-
-![Shadow Map GRC Unified Scan](docs/screenshots/unified-scan.png)
-
-### Risk Register
-
-Record, assess, track, and manage information-security risks.
-
-![Shadow Map GRC Risk Register](docs/screenshots/risk-register.png)
+- Scan history and Records Management
 
 ## Requirements
 
-Before starting Shadow Map GRC, install the following:
+- Windows, macOS or Linux/Kali
+- Docker and Docker Compose
+- Internet connection for the initial build
+- Sufficient disk space for Docker images and application data
 
-| Requirement | Purpose |
+The supplied Docker image includes Python, Nmap, Java 21 and OWASP ZAP 2.17.0.
+
+## Installation
+
+### 1. Download the project
+
+Clone the repository:
+
+```bash
+git clone https://github.com/xITACHIxUCHIHAx/shadow-map-grc.git
+cd shadow-map-grc
+```
+
+Alternatively, download the ZIP from GitHub and extract it.
+
+### 2. Install Docker
+
+Install Docker for your operating system:
+
+- [Windows – Docker Desktop](https://docs.docker.com/desktop/setup/install/windows-install/)
+- [macOS – Docker Desktop](https://docs.docker.com/desktop/setup/install/mac-install/)
+- [Linux – Docker Engine](https://docs.docker.com/engine/install/)
+
+For Kali Linux, follow the Docker Debian installation instructions appropriate to your system.
+
+Start Docker Desktop on Windows/macOS.
+
+On Linux:
+
+```bash
+sudo systemctl enable --now docker
+```
+
+Verify installation:
+
+```bash
+docker --version
+docker compose version
+```
+
+### 3. Configure the application
+
+**Important:** Run all commands in this section inside the Shadow Map GRC project root directory — the folder containing `docker-compose.yml`, `Dockerfile` and `.env.example`.
+
+If you are not already in the project directory:
+
+**Linux/macOS:**
+
+```bash
+cd ~/shadow-map-grc
+```
+
+**Windows PowerShell:**
+
+```powershell
+cd C:\path\to\shadow-map-grc
+```
+
+Replace the example Windows path with your actual project location.
+
+**Create the `.env` file:**
+
+Linux/macOS:
+
+```bash
+cp .env.example .env
+```
+
+Windows PowerShell:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+**Generate a secure secret:**
+
+Linux/macOS:
+
+```bash
+python3 -c "import secrets; print(secrets.token_hex(32))"
+```
+
+Windows PowerShell:
+
+```powershell
+python -c "import secrets; print(secrets.token_hex(32))"
+```
+
+Copy the generated value.
+
+**Open `.env` in a text editor:**
+
+Linux:
+
+```bash
+nano .env
+```
+
+macOS:
+
+```bash
+open -e .env
+```
+
+Windows:
+
+```powershell
+notepad .env
+```
+
+Replace the example value with your generated secret:
+
+```env
+SHADOW_MAP_SECRET_KEY=paste-your-generated-secret-here
+```
+
+Save the file and close the editor.
+
+**Important:**
+- `.env` must be in the project root, alongside `docker-compose.yml`.
+- Do not create it in another directory.
+- Do not upload `.env` to GitHub.
+- Keep your secret private.
+
+### 4. Start Shadow Map GRC
+
+Run the command from the project root directory.
+
+**Linux:**
+
+```bash
+bash scripts/grc start
+```
+
+**macOS:**
+
+```bash
+bash scripts/grc start
+```
+
+**Windows PowerShell:**
+
+```powershell
+.\scripts\grc.ps1 start
+```
+
+The first startup builds the Docker image and downloads dependencies. This may take some time.
+
+### 5. Open the application
+
+Once the container has started, open:
+
+**http://127.0.0.1:5000**
+
+Health check:
+
+**http://127.0.0.1:5000/health**
+
+Expected response:
+
+```json
+{"status":"ok"}
+```
+
+## Management Commands
+
+Run these commands from the project root.
+
+| Action | Linux/macOS | Windows PowerShell |
+|---|---|---|
+| Start | `bash scripts/grc start` | `.\scripts\grc.ps1 start` |
+| Stop | `bash scripts/grc stop` | `.\scripts\grc.ps1 stop` |
+| Restart | `bash scripts/grc restart` | `.\scripts\grc.ps1 restart` |
+| Status | `bash scripts/grc status` | `.\scripts\grc.ps1 status` |
+| Logs | `bash scripts/grc logs` | `.\scripts\grc.ps1 logs` |
+
+## Background Process Management
+
+Shadow Map GRC runs inside a Docker container in the background.
+
+Docker Compose uses `restart: unless-stopped`. Docker may automatically restart
+the container after a Docker service or host restart, unless it was explicitly
+stopped.
+
+
+### Check whether the application is running
+
+Check all running containers:
+
+```bash
+docker ps
+```
+
+Check the Shadow Map GRC container:
+
+```bash
+docker ps --filter "name=grc"
+```
+
+Check Compose service status:
+
+```bash
+docker compose ps
+```
+
+### View background logs
+
+Follow live application logs:
+
+```bash
+docker logs -f grc
+```
+
+View the last 100 log lines:
+
+```bash
+docker logs --tail 100 grc
+```
+
+Press `Ctrl+C` to stop viewing live logs. This does not stop the application.
+
+### Stop the application
+
+**Linux/macOS:**
+
+```bash
+bash scripts/grc stop
+```
+
+**Windows PowerShell:**
+
+```powershell
+.\scripts\grc.ps1 stop
+```
+
+This stops the application container while preserving project data.
+
+### Restart the application
+
+**Linux/macOS:**
+
+```bash
+bash scripts/grc restart
+```
+
+**Windows PowerShell:**
+
+```powershell
+.\scripts\grc.ps1 restart
+```
+
+### Find a process using port 5000
+
+**Linux:**
+
+```bash
+sudo ss -ltnp | grep ':5000'
+```
+
+**macOS:**
+
+```bash
+lsof -i :5000
+```
+
+**Windows PowerShell:**
+
+```powershell
+Get-NetTCPConnection -LocalPort 5000 -ErrorAction SilentlyContinue
+```
+
+### Terminate a conflicting process
+
+First identify the process and confirm that it is safe to stop.
+
+**Linux:**
+
+```bash
+sudo kill <PID>
+```
+
+If it does not stop:
+
+```bash
+sudo kill -9 <PID>
+```
+
+**macOS:**
+
+```bash
+kill <PID>
+```
+
+If necessary:
+
+```bash
+kill -9 <PID>
+```
+
+**Windows PowerShell:**
+
+```powershell
+Stop-Process -Id <PID>
+```
+
+If necessary:
+
+```powershell
+Stop-Process -Id <PID> -Force
+```
+
+Replace `<PID>` with the actual process ID.
+
+**Important:**
+- Prefer `bash scripts/grc stop` or `.\scripts\grc.ps1 stop` over manually terminating processes.
+- If Docker is using port 5000, stop Shadow Map GRC through its management script.
+- Do not kill Docker, system processes, or unidentified processes.
+- Use `kill -9` or `Stop-Process -Force` only as a last resort.
+
+## Troubleshooting
+
+| Problem | Solution |
 |---|---|
-| Python 3.11 or newer | Runs the application |
-| pip | Installs Python dependencies |
-| Nmap | Optional; enables network scanning |
-| Java 17 or newer | Optional; required only for OWASP ZAP |
-| Internet connection | Required for initial dependency installation |
+| Docker is not running | Start Docker Desktop or start the Docker service on Linux. |
+| Docker Compose not found | Install the Docker Compose plugin. |
+| Missing secret key | Check that `.env` exists in the project root and contains `SHADOW_MAP_SECRET_KEY`. |
+| Port 5000 already in use | Stop the conflicting process or change the host port mapping in `docker-compose.yml`. |
+| Application does not open | Check `docker compose ps` and `docker logs --tail 100 grc`. |
+| Docker build fails | Check internet connectivity, disk space and Docker build output. |
+| Nmap unavailable | Check with `docker exec grc nmap --version`. |
 
-Python dependencies are listed in `requirements.txt`. The launch scripts install them automatically.
-
-## 1. Install Python
-
-Download Python only from the official Python website:
-
-**Official download:** https://www.python.org/downloads/
-
-Choose the instructions for your operating system below.
-
-### Windows
-
-1. Open https://www.python.org/downloads/windows/
-2. Download a current Python 3 Windows installer.
-3. Run the installer.
-4. Ensure the Python Launcher (`py`) is installed. It is required by the Windows launch script.
-5. Select the option to add Python to PATH if available.
-6. Complete the installation.
-
-Open a new Command Prompt and verify:
-
-```cmd
-py --version
-py -m pip --version
-```
-
-Both commands should display version information.
-
-If Windows cannot find `py`, rerun the Python installer and ensure the Python Launcher is installed.
-
-### macOS
-
-1. Open https://www.python.org/downloads/macos/
-2. Download the macOS installer for a current Python 3 release.
-3. Open the downloaded installer package.
-4. Follow the installation instructions.
-5. Open a new Terminal window.
-
-Verify the installation:
+For additional diagnostics:
 
 ```bash
-python3 --version
-python3 -m pip --version
+docker compose ps
+docker logs --tail 200 grc
 ```
 
-Alternatively, Python can be installed using Homebrew:
+## MITRE ATT&CK Catalogue
 
-```bash
-brew install python
+When the application starts, a background worker checks the official MITRE
+Enterprise ATT&CK release index and imports the catalogue when the local
+database is empty or outdated.
+
+- Internet access is required for the initial download and update checks.
+- After a successful check, updates are checked every 24 hours.
+- If synchronization fails, the worker retries after 15 minutes.
+- The catalogue is stored in the local SQLite database.
+
+## Data Storage
+
+Application data is stored in:
+
+```text
+data/
 ```
 
-Homebrew: https://brew.sh/
-
-### Linux
-
-Python 3 is available through the package manager of most Linux distributions.
-
-**Debian, Ubuntu, and Kali Linux:**
-
-```bash
-sudo apt update
-sudo apt install -y python3 python3-pip python3-venv
-```
-
-**Fedora:**
-
-```bash
-sudo dnf install -y python3 python3-pip
-```
-
-**Arch Linux:**
-
-```bash
-sudo pacman -S python python-pip
-```
-
-For other distributions, use the distribution's official package manager or Python installation instructions.
-
-Verify the installation:
-
-```bash
-python3 --version
-python3 -m pip --version
-```
-
-If your distribution separates the virtual environment package, install it before continuing.
-
-## 2. Download the Project
-
-Download or clone the Shadow Map GRC project and extract it if you downloaded a ZIP archive.
-
-Open a terminal or Command Prompt inside the extracted project directory.
-
-The project root should contain files such as:
-
-- `app.py`
-- `config.py`
-- `requirements.txt`
-- `README.md`
-- `scripts/`
-
-## 3. Install Nmap
-
-Nmap is optional for application startup but required for network scanning.
-
-Official download page: https://nmap.org/download.html
-
-The launchers can attempt to install Nmap automatically:
-
-- **Linux:** Offers installation through supported package managers (apt-get, dnf, pacman, or zypper).
-- **macOS:** Offers installation using Homebrew if available.
-- **Windows:** Refreshes winget sources, checks the package, and offers installation if available.
-
-If automatic installation is unavailable or unsuccessful, install Nmap manually using its official download instructions.
-
-After installation, open a new terminal if necessary and verify:
-
-```bash
-nmap --version
-```
-
-On Windows, run:
-
-```cmd
-nmap --version
-```
-
-## 4. Start Shadow Map GRC
-
-Run the appropriate launcher from the project root directory.
-
-### Kali Linux and other Linux distributions
-
-```bash
-bash scripts/start-linux.sh
-```
-
-The Linux launcher:
-
-- Requires Python 3.11 or newer.
-- Checks for Python virtual environment support.
-- Offers to install Nmap if it is missing and a supported package manager is available.
-- Offers to install Java 17 or newer if it is missing.
-- Treats Nmap and Java as optional for application startup.
-- Creates a virtual environment in the project directory.
-- Upgrades pip and installs dependencies from `requirements.txt`.
-- Starts the application.
-
-Nmap enables network scanning. Java enables OWASP ZAP integration. Package installation depends on the available package manager, network access, and permissions.
-
-### macOS
-
-```bash
-bash scripts/start-macos.sh
-```
-
-The macOS launcher:
-
-- Requires Python 3.11 or newer.
-- Offers to install Nmap using Homebrew if it is missing.
-- Offers to install Java 17 or newer if it is missing.
-- Treats Nmap and Java as optional for application startup.
-- Creates a virtual environment.
-- Installs dependencies from `requirements.txt`.
-- Starts the application.
-
-Nmap enables network scanning. Java enables OWASP ZAP integration. If Homebrew is unavailable, install missing tools manually.
-
-### Windows
-
-Open Command Prompt in the project root directory and run:
-
-```cmd
-scripts\start-windows.bat
-```
-
-The Windows launcher:
-
-- Requires Python 3.11 or newer and the Python Launcher (`py`).
-- Offers to install Nmap using winget after refreshing sources and checking the package.
-- Offers to install Java 17 or newer for OWASP ZAP.
-- Treats Nmap and Java as optional for application startup.
-- Creates a virtual environment.
-- Installs dependencies from `requirements.txt`.
-- Starts the application.
-
-Nmap enables network scanning. Java enables OWASP ZAP integration. If winget installation is unavailable or fails, install the tools manually.
-
-
-### Java and OWASP ZAP Troubleshooting
-
-OWASP ZAP requires Java 17 or newer.
-
-Verify the Java installation:
-
-- Linux and macOS: run `java -version` and `which java`.
-- Windows: run `java -version` and `where.exe java`.
-
-If Java is installed but Shadow Map GRC cannot detect it:
-
-- Confirm that the installed runtime is Java 17 or newer.
-- Confirm that the Java executable is available through `PATH`.
-- Set `JAVA_HOME` to the Java installation directory if necessary.
-- Restart Shadow Map GRC after changing environment variables.
-- If multiple Java versions are installed, ensure the intended executable is selected.
-
-Java is optional for application startup. OWASP ZAP integration requires a compatible Java runtime and ZAP installation.
-
-### Nmap OS Detection Permissions
-
-Nmap network scanning and Nmap OS detection have different privilege requirements. OS detection uses privileged packet operations and may not work when the application is running without the required permissions.
-
-- **Linux:** Shadow Map GRC uses the restricted `shadow-map-nmap-os-helper` through `sudo -n` for OS detection. The helper must be installed and correctly permitted. Do not replace this with unrestricted sudo access.
-- **macOS:** Nmap OS detection requires Shadow Map GRC to run with root privileges. Close the application and restart it from an appropriately privileged terminal when this feature is needed.
-- **Windows:** Nmap OS detection requires an elevated Administrator session. Close Shadow Map GRC and restart the launcher using **Run as administrator**. Npcap must also be installed and operational.
-
-If OS detection is unavailable, ordinary network scanning may still work. Do not run the application with elevated privileges unless the specific assessment feature requires it.
-
-## 5. Python Dependencies and Manual Setup
-
-The launch scripts automatically create a virtual environment and install the packages listed in `requirements.txt`.
-
-If you prefer to perform the Python setup manually, use the following commands.
-
-**Linux and macOS:**
-
-```bash
-python3 -m venv venv
-source venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
-```
-
-**Windows Command Prompt:**
-
-```cmd
-py -3 -m venv venv
-venv\Scripts\activate
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
-```
-
-After manual installation, start the application with:
-
-```bash
-python app.py
-```
-
-On Windows, use the activated virtual environment in Command Prompt before running the command.
-
-## 6. Open the Application
-
-After the launcher starts successfully, open:
-
-http://127.0.0.1:5000
-
-Keep the terminal open while using the application.
-
-Press `Ctrl+C` in the terminal to stop it.
-
-The application binds to localhost by default. Do not expose it to an untrusted network without reviewing and securing its configuration.
-
-## Database and Records
-
-The application uses SQLite. The default database is stored at:
+Default SQLite database:
 
 ```text
 data/shadow_map.db
 ```
 
-### MITRE ATT&CK Catalogue
+Back up the `data/` directory before upgrades or maintenance. Stopping or rebuilding the container does not normally remove the mounted application data.
 
-When Shadow Map GRC is started using `python app.py` or the documented launch scripts, a background worker checks the official MITRE Enterprise ATT&CK release index and imports the catalogue when the local database is empty or outdated.
+## Security Notice
 
-- An internet connection is required for the initial catalogue download and subsequent update checks.
-- After a successful check, the worker checks for updates every 24 hours.
-- If synchronization fails, it retries after 15 minutes.
-- The imported catalogue is stored in the local SQLite database.
-
-Catalogue synchronization runs in the background and does not require a manually downloaded database file.
-
-Assessment records, findings, and exported reports may contain sensitive information. Protect the database and backups, and review exported files before sharing them.
+- Use the application only on systems you own or have explicit authorization to assess.
+- Wapiti findings are unverified indicators and require manual validation.
+- Protect database files, reports and environment secrets.
+- The supplied Docker configuration uses elevated container privileges for network assessment capabilities.
+- ISO/IEC 27001:2022 mappings support traceability and do not constitute certification.
 
 ## Project Structure
 
-- `app.py` - Flask application and routes
-- `config.py` - Application configuration
-- `data/` - Application data directory
-- `grc/` - Governance, risk, and compliance logic
-- `scanner/` - Security assessment and scanning modules
-- `reporting/` - Reporting functionality
-- `scripts/` - Operating-system launchers
-- `static/` - Static assets
-- `templates/` - HTML templates
-- `tests/` - Automated tests
-- `requirements.txt` - Python dependencies
+| Path | Purpose |
+|---|---|
+| `app.py` | Flask application and routes |
+| `config.py` | Application configuration |
+| `data/` | Application data |
+| `grc/` | Governance, risk and compliance logic |
+| `scanner/` | Security assessment modules |
+| `reporting/` | Report generation |
+| `scripts/` | Docker management scripts |
+| `static/` | Static assets |
+| `templates/` | HTML templates |
+| `tests/` | Automated tests |
+| `requirements.txt` | Python dependencies |
 
 ## Development Checks
 
-Create and activate a virtual environment and install the runtime dependencies as described in the manual setup instructions.
+The automated test suite can be run in a Python development environment
+with the project dependencies installed.
 
-Install the test dependency:
+Install pytest if it is not already available:
 
 ```bash
 python -m pip install pytest
 ```
 
-Run the automated test suite with:
+Run the tests:
 
 ```bash
 python -m pytest
 ```
 
-## Responsible Use
+## Assessment Limitations
 
-Only assess systems and applications that you own or have explicit permission to test. Follow applicable laws, authorization boundaries, and organizational policies.
-
-Review findings before treating them as confirmed vulnerabilities. Scanner output is assessment evidence, not a guarantee that a system is secure or insecure.
-
-ISO/IEC 27001:2022 mappings are provided to support assessment and traceability. They do not constitute certification or an independent compliance audit.
-
-## Limitations
-
-- Nmap OS detection requires platform-specific elevated privileges and may be unavailable during an ordinary application session.
-- Windows OS detection requires Administrator privileges and Npcap.
-- Linux OS detection depends on the restricted Nmap helper being installed and permitted.
-- macOS OS detection requires root privileges.
-- Results depend on installed tools, network access, target configuration, and permissions.
-- Some integrations require separate installation or configuration.
-- OWASP ZAP requires Java 17 or newer.
-- Automatic installation of system tools depends on the operating system, package manager, network availability, and permissions.
-- The application is intended for local use by default; deployment in a shared or production environment requires additional security review.
+- Results depend on available tools, network access, target configuration and permissions.
+- Nmap OS detection may require additional platform-specific privileges.
+- Some integrations require separate configuration.
+- The application is intended for local use by default. Shared or production deployment requires additional security review.
 
 ## License
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+Licensed under the MIT License. See [LICENSE](LICENSE) for details.
