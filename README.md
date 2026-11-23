@@ -263,6 +263,16 @@ bash scripts/grc start
 
 **Windows PowerShell:**
 
+PowerShell may block script execution by default. If you encounter an execution-policy error, run this command in the current PowerShell window:
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+```
+
+This applies only to the current PowerShell session. The original execution policy is restored when you close that window.
+
+Then start Shadow Map GRC:
+
 ```powershell
 .\scripts\grc.ps1 start
 ```
