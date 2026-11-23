@@ -115,6 +115,7 @@ def _get_default_gateways():
                     text=True,
                     timeout=15,
                     check=False,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                 )
                 if result.returncode == 0 and result.stdout.strip():
                     data = json.loads(result.stdout)
@@ -1011,6 +1012,7 @@ def _get_neighbour_mac(ip_address, interface_name):
                     text=True,
                     timeout=5,
                     check=False,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                 )
                 if result.returncode == 0 and result.stdout.strip():
                     data = json.loads(result.stdout)

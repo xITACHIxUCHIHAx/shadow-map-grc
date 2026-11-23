@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import secrets
@@ -22,6 +23,74 @@ ENV_FILE = PROJECT_DIR / ".env"
 DATA_DIR = PROJECT_DIR / "data"
 PID_FILE = DATA_DIR / "host-agent.pid"
 LOG_FILE = DATA_DIR / "host-agent.log"
+
+
+def host_agent_python_path(venv_dir: Path, system_name: str | None = None) -> Path:
+    """Return the host-agent interpreter path for the current platform."""
+    system_name = system_name or os.name
+    if system_name == "nt":
+        return venv_dir / "Scripts" / "python.exe"
+    return venv_dir / "bin" / "python"
+
+
+def prepare_host_agent_runtime() -> None:
+    """Create and use an isolated environment for the host discovery agent."""
+    venv_dir = PROJECT_DIR / ".host-agent-venv"
+    requirements = PROJECT_DIR / "requirements-host-agent.txt"
+
+    if not requirements.is_file():
+        raise RuntimeError(
+            f"Host-agent requirements file is missing: {requirements}"
+        )
+
+    python = host_agent_python_path(venv_dir)
+
+    if not python.is_file():
+        print("Shadow Map GRC: Creating host-agent Python environment...")
+        subprocess.run(
+            [sys.executable, "-m", "venv", str(venv_dir)],
+            cwd=PROJECT_DIR,
+            check=True,
+        )
+
+    requirements_hash = hashlib.sha256(
+        requirements.read_bytes()
+    ).hexdigest()
+    stamp = venv_dir / ".requirements.sha256"
+
+    installed_hash = (
+        stamp.read_text(encoding="utf-8").strip()
+        if stamp.is_file() else ""
+    )
+
+    dependency_check = subprocess.run(
+        [
+            str(python),
+            "-c",
+            "import flask, requests, psutil",
+        ],
+        cwd=PROJECT_DIR,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+
+    if installed_hash != requirements_hash or dependency_check.returncode != 0:
+        print("Shadow Map GRC: Installing host-agent dependencies...")
+        subprocess.run(
+            [str(python), "-m", "pip", "install", "-r", str(requirements)],
+            cwd=PROJECT_DIR,
+            check=True,
+        )
+        stamp.write_text(requirements_hash + "\n", encoding="utf-8")
+
+    # Restart this launcher under the dedicated interpreter. The host agent
+    # will subsequently use the same interpreter through sys.executable.
+    if Path(sys.executable).resolve() != python.resolve():
+        os.execv(
+            str(python),
+            [str(python), str(Path(__file__).resolve()), *sys.argv[1:]],
+        )
 
 
 def read_env_file(path: Path | None = None) -> dict[str, str]:
@@ -404,6 +473,7 @@ def main() -> int:
     )
     args = parser.parse_args()
     try:
+        prepare_host_agent_runtime()
         env = os.environ.copy()
         env.update(ensure_runtime_env())
         # Compose interpolates required agent settings even for stop/status/logs.

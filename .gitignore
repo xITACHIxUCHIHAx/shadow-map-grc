@@ -51,3 +51,4 @@ dist/
 Thumbs.db
 .vscode/
 .idea/
+.host-agent-venv/
