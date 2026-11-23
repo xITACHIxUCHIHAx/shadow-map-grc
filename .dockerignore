@@ -59,3 +59,5 @@ dist/
 
 # Local setup template (kept in GitHub, not needed in image)
 .env.example
+
+docker-compose.yml
