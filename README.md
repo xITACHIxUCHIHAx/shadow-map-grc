@@ -178,8 +178,6 @@ cd ~/shadow-map-grc
 
 **Windows PowerShell:**
 
-The supplied PowerShell launcher applies a temporary execution-policy bypass to its own process. It does not change the machine-wide policy or persist after the process exits.
-
 ```powershell
 cd C:\path\to\shadow-map-grc
 ```
@@ -257,7 +255,7 @@ Run the command from the project root directory.
 **Linux:**
 
 ```bash
-bash scripts/grc start
+./scripts/grc start
 ```
 
 **macOS:**
@@ -265,14 +263,14 @@ bash scripts/grc start
 The macOS launcher is a Bash script. Run it without changing file permissions:
 
 ```bash
-bash scripts/grc-macos start
+./scripts/grc start
 ```
 
 If you prefer to execute it directly, grant execute permission once:
 
 ```bash
-chmod 755 scripts/grc-macos
-./scripts/grc-macos start
+chmod 755 scripts/grc
+./scripts/grc start
 ```
 
 If macOS reports that the file is from an unidentified developer, do not disable
@@ -281,26 +279,20 @@ source. If the trusted file has a quarantine attribute and you deliberately
 choose to clear it, remove that attribute only from this launcher:
 
 ```bash
-xattr -d com.apple.quarantine scripts/grc-macos
+xattr -d com.apple.quarantine scripts/grc
 ```
 
 This is not a general antivirus exclusion and should not be used for files whose
 origin you have not verified.
 
-**Windows PowerShell:**
+**Windows CMD and PowerShell:**
 
-PowerShell may block script execution by default. If you encounter an execution-policy error, run this command in the current PowerShell window:
-
-```powershell
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
-```
-
-This applies only to the current PowerShell session. The original execution policy is restored when you close that window.
+No PowerShell execution-policy change is required.
 
 Then start Shadow Map GRC:
 
 ```powershell
-.\scripts\grc.ps1 start
+.\scripts\grc.cmd start
 ```
 
 The first startup downloads the published Docker image. This may take some time depending on your internet connection.
@@ -325,14 +317,14 @@ Expected response:
 
 Run these commands from the project root.
 
-| Action | Linux | macOS | Windows PowerShell |
-|---|---|---|---|
-| Start | `bash scripts/grc start` | `bash scripts/grc-macos start` | `.\scripts\grc.ps1 start` |
-| Stop | `bash scripts/grc stop` | `bash scripts/grc-macos stop` | `.\scripts\grc.ps1 stop` |
-| Restart | `bash scripts/grc restart` | `bash scripts/grc-macos restart` | `.\scripts\grc.ps1 restart` |
-| Status | `bash scripts/grc status` | `bash scripts/grc-macos status` | `.\scripts\grc.ps1 status` |
-| Logs | `bash scripts/grc logs` | `bash scripts/grc-macos logs` | `.\scripts\grc.ps1 logs` |
-| Build, publish and deploy | `bash scripts/grc publish` | `bash scripts/grc-macos publish` | `.\scripts\grc.ps1 publish` |
+| Action | Linux / macOS | Windows CMD / PowerShell |
+|---|---|---|
+| Start | `./scripts/grc start` | `.\scripts\grc.cmd start` |
+| Stop | `./scripts/grc stop` | `.\scripts\grc.cmd stop` |
+| Restart | `./scripts/grc restart` | `.\scripts\grc.cmd restart` |
+| Status | `./scripts/grc status` | `.\scripts\grc.cmd status` |
+| Logs | `./scripts/grc logs` | `.\scripts\grc.cmd logs` |
+| Build, publish and deploy | `./scripts/grc publish` | `.\scripts\grc.cmd publish` |
 
 ## Publishing an Updated Docker Image
 
@@ -352,19 +344,19 @@ To publish and deploy your current local source in one operation:
 Linux:
 
 ```bash
-bash scripts/grc publish
+./scripts/grc publish
 ```
 
 macOS:
 
 ```bash
-bash scripts/grc-macos publish
+./scripts/grc publish
 ```
 
 Windows PowerShell:
 
 ```powershell
-.\scripts\grc.ps1 publish
+.\scripts\grc.cmd publish
 ```
 
 The command validates the Compose configuration, builds
@@ -427,7 +419,7 @@ exception, run PowerShell as Administrator and add only the specific blocked
 launcher file:
 
 ```powershell
-$BlockedFile = (Resolve-Path ".\scripts\grc.ps1").Path
+$BlockedFile = (Resolve-Path "scripts\grc.cmd").Path
 Add-MpPreference -ExclusionPath $BlockedFile
 Get-MpPreference | Select-Object -ExpandProperty ExclusionPath
 ```
@@ -438,7 +430,7 @@ Remove the exception when it is no longer required:
 Remove-MpPreference -ExclusionPath $BlockedFile
 ```
 
-Use the actual blocked file path if it is not `scripts\grc.ps1`. An exclusion
+Use the actual blocked file path if needed. An exclusion
 reduces protection for that file; it does not establish that the file is safe.
 Do not add broad process, interpreter, folder, or drive exclusions.
 
@@ -505,13 +497,13 @@ Press `Ctrl+C` to stop viewing live logs. This does not stop the application.
 **Linux/macOS:**
 
 ```bash
-bash scripts/grc stop
+./scripts/grc stop
 ```
 
 **Windows PowerShell:**
 
 ```powershell
-.\scripts\grc.ps1 stop
+.\scripts\grc.cmd stop
 ```
 
 This stops the application container while preserving project data.
@@ -521,13 +513,13 @@ This stops the application container while preserving project data.
 **Linux/macOS:**
 
 ```bash
-bash scripts/grc restart
+./scripts/grc restart
 ```
 
 **Windows PowerShell:**
 
 ```powershell
-.\scripts\grc.ps1 restart
+.\scripts\grc.cmd restart
 ```
 
 ### Find a process using port 5000
@@ -593,7 +585,7 @@ Stop-Process -Id <PID> -Force
 Replace `<PID>` with the actual process ID.
 
 **Important:**
-- Prefer `bash scripts/grc stop` or `.\scripts\grc.ps1 stop` over manually terminating processes.
+- Prefer `./scripts/grc stop` or `.\scripts\grc.cmd stop` over manually terminating processes.
 - If Docker is using port 5000, stop Shadow Map GRC through its management script.
 - Do not kill Docker, system processes, or unidentified processes.
 - Use `kill -9` or `Stop-Process -Force` only as a last resort.
