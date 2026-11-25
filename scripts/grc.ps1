@@ -4,6 +4,9 @@ param(
     [string]$Action
 )
 
+# Use a temporary execution-policy bypass for this process only.
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+
 $ErrorActionPreference = "Stop"
 $ProjectDir = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $VenvPython = Join-Path $ProjectDir "venv\Scripts\python.exe"

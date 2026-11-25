@@ -178,6 +178,8 @@ cd ~/shadow-map-grc
 
 **Windows PowerShell:**
 
+The supplied PowerShell launcher applies a temporary execution-policy bypass to its own process. It does not change the machine-wide policy or persist after the process exits.
+
 ```powershell
 cd C:\path\to\shadow-map-grc
 ```
