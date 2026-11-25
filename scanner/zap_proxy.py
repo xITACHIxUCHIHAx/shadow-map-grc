@@ -13,6 +13,7 @@ import signal
 import subprocess
 import time
 from pathlib import Path
+from types import SimpleNamespace
 from urllib.parse import urlsplit
 
 import requests
@@ -957,23 +958,105 @@ def _process_matches_managed_zap(pid, endpoint, zap_home):
     )
 
 
+def _managed_zap_process_ids():
+    """Return process IDs for strict managed-ZAP identity recovery."""
+    system = platform.system().lower()
+
+    try:
+        if system == "linux":
+            return [
+                int(item.name)
+                for item in Path("/proc").iterdir()
+                if item.name.isdigit()
+            ]
+
+        if system == "darwin":
+            result = subprocess.run(
+                ["ps", "-axo", "pid="],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=False,
+            )
+            if result.returncode != 0:
+                return []
+            return [
+                int(line.strip())
+                for line in result.stdout.splitlines()
+                if line.strip().isdigit()
+            ]
+
+        if system == "windows":
+            result = subprocess.run(
+                [
+                    "powershell", "-NoProfile", "-NonInteractive",
+                    "-Command",
+                    "Get-CimInstance Win32_Process | "
+                    "ForEach-Object { $_.ProcessId }",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=15,
+                check=False,
+            )
+            if result.returncode != 0:
+                return []
+            return [
+                int(line.strip())
+                for line in result.stdout.splitlines()
+                if line.strip().isdigit()
+            ]
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return []
+
+    return []
+
+
 def _is_managed_zap_process(endpoint, zap_home):
-    """Require a matching recorded PID and verified process command line."""
+    """Verify the recorded process or recover one uniquely matching process."""
     record = _read_managed_process_record()
     if not record:
         return False
 
-    if record["endpoint"] != endpoint:
+    expected_home = str(Path(zap_home).resolve())
+    if (
+        record["endpoint"] != endpoint
+        or record["zap_home"] != expected_home
+    ):
         return False
 
-    if record["zap_home"] != str(Path(zap_home).resolve()):
+    recorded_pid = record["pid"]
+    if _process_matches_managed_zap(
+        recorded_pid, endpoint, zap_home
+    ):
+        return True
+
+    # The saved PID may have changed after a container restart. Rediscover
+    # only processes whose daemon arguments match this exact endpoint/profile.
+    candidates = [
+        pid for pid in _managed_zap_process_ids()
+        if pid != recorded_pid
+        and _process_matches_managed_zap(pid, endpoint, zap_home)
+    ]
+
+    # Ambiguous matches are never adopted.
+    if len(candidates) != 1:
         return False
 
-    return _process_matches_managed_zap(
-        record["pid"],
+    candidate_pid = candidates[0]
+
+    # Recheck immediately before updating the atomically stored PID.
+    if not _process_matches_managed_zap(
+        candidate_pid, endpoint, zap_home
+    ):
+        return False
+
+    _write_managed_process_record(
+        SimpleNamespace(pid=candidate_pid),
         endpoint,
         zap_home,
     )
+    return True
 
 
 def shutdown_managed_zap(grace_seconds=5):
@@ -1043,8 +1126,58 @@ def shutdown_managed_zap(grace_seconds=5):
         return False
 
 
-def _validate_existing_managed_zap_session(zap_home):
-    """Require an intact, ready session when reusing an existing daemon."""
+def _get_managed_zap_session_location(endpoint):
+    """Read the loaded session path through the authenticated local ZAP API."""
+    api_key = get_api_key()
+    if not api_key:
+        raise ZapProxyError(
+            "The managed ZAP API key is unavailable; session recovery was refused."
+        )
+
+    session = requests.Session()
+    session.trust_env = False
+
+    try:
+        response = session.get(
+            endpoint + "/JSON/core/view/sessionLocation/",
+            params={"apikey": api_key},
+            timeout=(3, 5),
+            allow_redirects=False,
+        )
+        if response.is_redirect:
+            raise ZapProxyError(
+                "ZAP redirected the session verification request."
+            )
+        response.raise_for_status()
+
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise ZapProxyError(
+                "ZAP returned an invalid session-location response."
+            ) from exc
+
+        location = (
+            payload.get("sessionLocation")
+            if isinstance(payload, dict) else None
+        )
+        if not isinstance(location, str) or not location.strip():
+            raise ZapProxyError(
+                "ZAP did not report its loaded session location."
+            )
+        return location
+    except ZapProxyError:
+        raise
+    except requests.RequestException as exc:
+        raise ZapProxyError(
+            "Could not verify the loaded ZAP session location."
+        ) from exc
+    finally:
+        session.close()
+
+
+def _validate_existing_managed_zap_session(zap_home, endpoint=None):
+    """Validate a ready session or safely recover verified initialization."""
     record = _read_managed_session_manifest(zap_home)
 
     if record is None:
@@ -1053,18 +1186,40 @@ def _validate_existing_managed_zap_session(zap_home):
             "Its session was not modified."
         )
 
-    if record["status"] != "ready":
-        raise ZapProxyError(
-            "The running managed ZAP process has a session that is not "
-            "marked ready. Its session was not modified."
-        )
-
     if not _managed_session_artifacts_exist(zap_home):
         raise ZapProxyError(
             "The running managed ZAP process has missing or incomplete "
             "session database files. Its session was not modified."
         )
 
+    if record["status"] == "ready":
+        return True
+
+    if record["status"] != "initializing" or not endpoint:
+        raise ZapProxyError(
+            "The running managed ZAP process has a session that is not "
+            "verified as ready. Its session was not modified."
+        )
+
+    expected_location = record["session_path"]
+    actual_location = _get_managed_zap_session_location(endpoint)
+
+    try:
+        actual_path = str(Path(actual_location).resolve())
+    except (OSError, TypeError, ValueError) as exc:
+        raise ZapProxyError(
+            "ZAP reported an invalid session location; recovery was refused."
+        ) from exc
+
+    if actual_path != expected_location:
+        raise ZapProxyError(
+            "ZAP's loaded session does not match Shadow Map's managed session. "
+            "The existing session was not modified."
+        )
+
+    # Both the authenticated API and persisted database files identify the
+    # same existing session. Only the manifest readiness state is updated.
+    _mark_managed_zap_session_ready(zap_home)
     return True
 
 
@@ -1094,7 +1249,7 @@ def ensure_zap_running(endpoint=None):
                 "confirming it is safe to do so, then retry."
             )
 
-        _validate_existing_managed_zap_session(zap_home)
+        _validate_existing_managed_zap_session(zap_home, endpoint)
         return connection
 
     if parsed.scheme != "http":

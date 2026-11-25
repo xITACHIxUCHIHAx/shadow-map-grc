@@ -61,3 +61,5 @@ dist/
 .env.example
 
 docker-compose.yml
+
+.host-agent-venv/

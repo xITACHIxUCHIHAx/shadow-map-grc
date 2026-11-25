@@ -1,4 +1,5 @@
 import ctypes
+import os
 import unittest
 import tempfile
 from pathlib import Path
@@ -17,6 +18,9 @@ from scanner.zap_proxy import (
     ensure_zap_running,
     get_api_key,
     _process_matches_managed_zap,
+    _is_managed_zap_process,
+    _managed_zap_process_ids,
+    _get_managed_zap_session_location,
     _split_windows_command_line,
     _write_managed_process_record,
     _read_managed_process_record,
@@ -35,7 +39,7 @@ class JavaDiscoveryTests(unittest.TestCase):
             java_home = Path(temporary)
             java_bin = java_home / "bin"
             java_bin.mkdir()
-            java_executable = java_bin / "java"
+            java_executable = java_bin / ("java.exe" if os.name == "nt" else "java")
             java_executable.touch()
 
             with patch.dict(
@@ -172,7 +176,7 @@ class ZapLaunchCommandJavaTests(unittest.TestCase):
 
         self.assertEqual(command[0], "/usr/bin/java")
         self.assertIn("-jar", command)
-        self.assertIn("/managed/zap/zap.jar", command)
+        self.assertIn(str(Path("/managed/zap/zap.jar")), command)
 
 
 class ZapEndpointValidationTests(unittest.TestCase):
@@ -325,7 +329,8 @@ class ZapManagedKeyTests(unittest.TestCase):
 
             self.assertEqual(key, "a" * 64)
             self.assertEqual(key_file.read_text(encoding="utf-8").strip(), key)
-            self.assertEqual(key_file.stat().st_mode & 0o777, 0o600)
+            if os.name != "nt":
+                self.assertEqual(key_file.stat().st_mode & 0o777, 0o600)
             token_generator.assert_called_once_with(32)
 
     def test_reuses_existing_managed_key(self):
@@ -439,6 +444,40 @@ class ZapScanLifecycleTests(unittest.TestCase):
 
 
 class ZapManagedProcessIdentityTests(unittest.TestCase):
+    def test_discovers_macos_process_ids(self):
+        result = Mock(returncode=0, stdout="101\n202\ninvalid\n")
+        with patch("scanner.zap_proxy.platform.system", return_value="Darwin"), patch(
+            "scanner.zap_proxy.subprocess.run", return_value=result
+        ) as run:
+            self.assertEqual(_managed_zap_process_ids(), [101, 202])
+
+        run.assert_called_once_with(
+            ["ps", "-axo", "pid="],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+
+    def test_discovers_windows_process_ids(self):
+        result = Mock(returncode=0, stdout="301\n402\ninvalid\n")
+        with patch("scanner.zap_proxy.platform.system", return_value="Windows"), patch(
+            "scanner.zap_proxy.subprocess.run", return_value=result
+        ) as run:
+            self.assertEqual(_managed_zap_process_ids(), [301, 402])
+
+        arguments = run.call_args.args[0]
+        self.assertEqual(arguments[0], "powershell")
+        self.assertIn("Get-CimInstance Win32_Process", arguments[-1])
+        self.assertEqual(run.call_args.kwargs["timeout"], 15)
+
+    def test_process_discovery_returns_empty_on_command_failure(self):
+        result = Mock(returncode=1, stdout="")
+        with patch("scanner.zap_proxy.platform.system", return_value="Darwin"), patch(
+            "scanner.zap_proxy.subprocess.run", return_value=result
+        ):
+            self.assertEqual(_managed_zap_process_ids(), [])
+
     def test_windows_command_line_parser_preserves_quoted_profile_path(self):
         expected = [
             "java.exe",
@@ -582,6 +621,75 @@ class ZapManagedProcessIdentityTests(unittest.TestCase):
 
 
 
+    def test_recovers_stale_pid_when_exactly_one_managed_process_matches(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            data_dir = root / "data"
+            record_file = data_dir / ".zap_managed_process.json"
+            zap_home = root / "tools" / "zap-home"
+            endpoint = "http://127.0.0.1:8090"
+
+            with patch("scanner.zap_proxy.DATA_DIR", data_dir), patch(
+                "scanner.zap_proxy.PROCESS_RECORD_FILE", record_file
+            ):
+                _write_managed_process_record(Mock(pid=100), endpoint, zap_home)
+
+                with patch(
+                    "scanner.zap_proxy._managed_zap_process_ids",
+                    return_value=[200, 300],
+                ), patch(
+                    "scanner.zap_proxy._process_matches_managed_zap",
+                    side_effect=lambda pid, *_: pid == 200,
+                ):
+                    self.assertTrue(_is_managed_zap_process(endpoint, zap_home))
+
+                self.assertEqual(_read_managed_process_record()["pid"], 200)
+
+    def test_does_not_recover_stale_pid_without_matching_process(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            data_dir = root / "data"
+            record_file = data_dir / ".zap_managed_process.json"
+            zap_home = root / "tools" / "zap-home"
+            endpoint = "http://127.0.0.1:8090"
+
+            with patch("scanner.zap_proxy.DATA_DIR", data_dir), patch(
+                "scanner.zap_proxy.PROCESS_RECORD_FILE", record_file
+            ):
+                _write_managed_process_record(Mock(pid=100), endpoint, zap_home)
+                with patch(
+                    "scanner.zap_proxy._managed_zap_process_ids",
+                    return_value=[200, 300],
+                ), patch(
+                    "scanner.zap_proxy._process_matches_managed_zap",
+                    return_value=False,
+                ):
+                    self.assertFalse(_is_managed_zap_process(endpoint, zap_home))
+                self.assertEqual(_read_managed_process_record()["pid"], 100)
+
+    def test_does_not_recover_stale_pid_when_process_match_is_ambiguous(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            data_dir = root / "data"
+            record_file = data_dir / ".zap_managed_process.json"
+            zap_home = root / "tools" / "zap-home"
+            endpoint = "http://127.0.0.1:8090"
+
+            with patch("scanner.zap_proxy.DATA_DIR", data_dir), patch(
+                "scanner.zap_proxy.PROCESS_RECORD_FILE", record_file
+            ):
+                _write_managed_process_record(Mock(pid=100), endpoint, zap_home)
+                with patch(
+                    "scanner.zap_proxy._managed_zap_process_ids",
+                    return_value=[200, 300],
+                ), patch(
+                    "scanner.zap_proxy._process_matches_managed_zap",
+                    side_effect=lambda pid, *_args: pid in {200, 300},
+                ):
+                    self.assertFalse(_is_managed_zap_process(endpoint, zap_home))
+                self.assertEqual(_read_managed_process_record()["pid"], 100)
+
+    @unittest.skipUnless(os.name != "nt", "Requires POSIX process groups")
     def test_shutdown_stops_verified_managed_process_group(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -610,10 +718,10 @@ class ZapManagedProcessIdentityTests(unittest.TestCase):
                 "scanner.zap_proxy._process_matches_managed_zap",
                 return_value=True,
             ), patch(
-                "scanner.zap_proxy.os.getpgid", return_value=4321
+                "scanner.zap_proxy.os.getpgid", return_value=4321, create=True
             ), patch(
                 "scanner.zap_proxy.os.killpg",
-                side_effect=fake_killpg,
+                side_effect=fake_killpg, create=True,
             ) as killpg:
                 _write_managed_process_record(
                     process, "http://127.0.0.1:8090", zap_home
@@ -634,7 +742,7 @@ class ZapManagedProcessIdentityTests(unittest.TestCase):
             with patch(
                 "scanner.zap_proxy.PROCESS_RECORD_FILE", record_file
             ), patch(
-                "scanner.zap_proxy.os.killpg"
+                "scanner.zap_proxy.os.killpg", create=True
             ) as killpg:
                 self.assertFalse(shutdown_managed_zap())
                 killpg.assert_not_called()
@@ -655,7 +763,7 @@ class ZapManagedProcessIdentityTests(unittest.TestCase):
                 "scanner.zap_proxy._process_matches_managed_zap",
                 return_value=False,
             ), patch(
-                "scanner.zap_proxy.os.killpg"
+                "scanner.zap_proxy.os.killpg", create=True
             ) as killpg:
                 _write_managed_process_record(
                     Mock(pid=4321),
@@ -801,6 +909,7 @@ class ZapManagedSessionLifecycleTests(unittest.TestCase):
 
 class ZapAutomaticStartupTests(unittest.TestCase):
 
+    @unittest.skipUnless(os.name != "nt", "Tests Linux-specific startup paths")
     @patch("scanner.zap_proxy.platform.system", return_value="Linux")
     @patch("scanner.zap_proxy.subprocess.Popen")
     @patch("scanner.zap_proxy._require_java_17")
@@ -931,6 +1040,84 @@ class ZapAutomaticStartupTests(unittest.TestCase):
 
     def test_existing_process_rejects_initializing_session(self):
         self._assert_existing_process_rejects_session("initializing")
+
+    def test_existing_process_recovers_initializing_session_when_api_path_matches(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            managed_root = Path(temporary) / "tools" / "zap"
+            zap_home = managed_root.parent / "zap-home"
+            session_dir = zap_home / "session"
+            session_dir.mkdir(parents=True)
+            base = session_dir / "shadow-map-grc.session"
+            base.with_name(base.name + ".data").write_bytes(b"existing-session")
+            base.with_name(base.name + ".properties").write_text(
+                "version=2.0\\n", encoding="utf-8"
+            )
+            _write_managed_session_manifest(zap_home, "initializing")
+
+            with patch(
+                "scanner.zap_proxy._ensure_zap_api_key",
+                return_value="test-api-key",
+            ), patch(
+                "scanner.zap_proxy.test_connection",
+                return_value={"connected": True, "version": "2.17.0"},
+            ), patch(
+                "scanner.zap_proxy.managed_zap_root",
+                return_value=managed_root,
+            ), patch(
+                "scanner.zap_proxy._is_managed_zap_process",
+                return_value=True,
+            ), patch(
+                "scanner.zap_proxy._get_managed_zap_session_location",
+                return_value=str(base.resolve()),
+            ), patch("scanner.zap_proxy.subprocess.Popen") as popen:
+                result = ensure_zap_running("http://127.0.0.1:8090")
+
+            self.assertTrue(result["connected"])
+            self.assertEqual(
+                _read_managed_session_manifest(zap_home)["status"], "ready"
+            )
+            self.assertTrue(_managed_session_artifacts_exist(zap_home))
+            popen.assert_not_called()
+
+    def test_existing_process_does_not_recover_when_api_session_path_differs(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            managed_root = Path(temporary) / "tools" / "zap"
+            zap_home = managed_root.parent / "zap-home"
+            session_dir = zap_home / "session"
+            session_dir.mkdir(parents=True)
+            base = session_dir / "shadow-map-grc.session"
+            base.with_name(base.name + ".data").write_bytes(b"existing-session")
+            base.with_name(base.name + ".properties").write_text(
+                "version=2.0\\n", encoding="utf-8"
+            )
+            _write_managed_session_manifest(zap_home, "initializing")
+
+            with patch(
+                "scanner.zap_proxy._ensure_zap_api_key",
+                return_value="test-api-key",
+            ), patch(
+                "scanner.zap_proxy.test_connection",
+                return_value={"connected": True, "version": "2.17.0"},
+            ), patch(
+                "scanner.zap_proxy.managed_zap_root",
+                return_value=managed_root,
+            ), patch(
+                "scanner.zap_proxy._is_managed_zap_process",
+                return_value=True,
+            ), patch(
+                "scanner.zap_proxy._get_managed_zap_session_location",
+                return_value=str(Path(temporary) / "different.session"),
+            ), patch("scanner.zap_proxy.subprocess.Popen") as popen:
+                with self.assertRaisesRegex(
+                    ZapProxyError, "does not match Shadow Map's managed session"
+                ):
+                    ensure_zap_running("http://127.0.0.1:8090")
+
+            self.assertEqual(
+                _read_managed_session_manifest(zap_home)["status"],
+                "initializing",
+            )
+            popen.assert_not_called()
 
     def test_existing_process_rejects_missing_session_database(self):
         self._assert_existing_process_rejects_session("ready")
@@ -1067,7 +1254,7 @@ class ZapAutomaticStartupTests(unittest.TestCase):
 
             command = popen.call_args.args[0]
             self.assertIn("-jar", command)
-            self.assertIn("/managed/zap/zap-2.17.0.jar", command)
+            self.assertIn(str(Path("/managed/zap/zap-2.17.0.jar")), command)
             self.assertIn("-daemon", command)
             self.assertIn("api.key=test-api-key", command)
             self.assertIn("-dir", command)
@@ -1079,3 +1266,86 @@ class ZapAutomaticStartupTests(unittest.TestCase):
 
             self.assertEqual(connection.call_count, 2)
             process.poll.assert_not_called()
+
+
+class ZapManagedSessionLocationTests(unittest.TestCase):
+    def test_reads_authenticated_session_location(self):
+        response = Mock(is_redirect=False)
+        response.json.return_value = {
+            "sessionLocation": "/tmp/zap-home/session/shadow-map-grc.session"
+        }
+        session = Mock()
+        session.get.return_value = response
+
+        with patch(
+            "scanner.zap_proxy.get_api_key", return_value="test-api-key"
+        ), patch(
+            "scanner.zap_proxy.requests.Session", return_value=session
+        ):
+            location = _get_managed_zap_session_location(
+                "http://127.0.0.1:8090"
+            )
+
+        self.assertEqual(
+            location,
+            "/tmp/zap-home/session/shadow-map-grc.session",
+        )
+        self.assertFalse(session.trust_env)
+        session.get.assert_called_once_with(
+            "http://127.0.0.1:8090/JSON/core/view/sessionLocation/",
+            params={"apikey": "test-api-key"},
+            timeout=(3, 5),
+            allow_redirects=False,
+        )
+        session.close.assert_called_once()
+        response.raise_for_status.assert_called_once()
+
+    def test_refuses_session_lookup_without_api_key(self):
+        with patch(
+            "scanner.zap_proxy.get_api_key", return_value=None
+        ), patch(
+            "scanner.zap_proxy.requests.Session"
+        ) as session_factory:
+            with self.assertRaises(ZapProxyError):
+                _get_managed_zap_session_location(
+                    "http://127.0.0.1:8090"
+                )
+
+        session_factory.assert_not_called()
+
+    def test_rejects_redirect_and_closes_session(self):
+        response = Mock(is_redirect=True)
+        session = Mock()
+        session.get.return_value = response
+
+        with patch(
+            "scanner.zap_proxy.get_api_key", return_value="test-api-key"
+        ), patch(
+            "scanner.zap_proxy.requests.Session", return_value=session
+        ):
+            with self.assertRaises(ZapProxyError):
+                _get_managed_zap_session_location(
+                    "http://127.0.0.1:8090"
+                )
+
+        response.raise_for_status.assert_not_called()
+        session.close.assert_called_once()
+
+    def test_rejects_invalid_json_and_closes_session(self):
+        response = Mock(is_redirect=False)
+        response.json.side_effect = ValueError("invalid JSON")
+        session = Mock()
+        session.get.return_value = response
+
+        with patch(
+            "scanner.zap_proxy.get_api_key", return_value="test-api-key"
+        ), patch(
+            "scanner.zap_proxy.requests.Session", return_value=session
+        ):
+            with self.assertRaises(ZapProxyError):
+                _get_managed_zap_session_location(
+                    "http://127.0.0.1:8090"
+                )
+
+        response.raise_for_status.assert_called_once()
+        session.close.assert_called_once()
